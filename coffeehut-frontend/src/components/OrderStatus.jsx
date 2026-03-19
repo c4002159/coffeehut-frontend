@@ -1,29 +1,28 @@
 // 角色2 负责 - 订单状态
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const OrderStatus = () => {
     const navigate = useNavigate();
     const { state } = useLocation();
-    const [orderId] = useState(state?.orderId || ''); // 从跳转传参获取，也可手动修改
-    const [status, setStatus] = useState('pending'); // 默认状态 
+    const [orderId] = useState(state?.orderId || '');
+    const [status, setStatus] = useState('pending');
 
     useEffect(() => {
         if (!orderId) return;
-
-        // 每5秒轮询后端接口 
         const interval = setInterval(async () => {
             try {
                 const response = await fetch(`http://localhost:8080/api/orders/${orderId}`);
                 if (response.ok) {
                     const data = await response.json();
-                    setStatus(data.status); // 更新状态值 
+                    setStatus(data.status);
                 }
             } catch (error) {
-                console.error("轮询失败:", error);
+                console.error('轮询失败:', error);
             }
         }, 5000);
-
+        return () => clearInterval(interval);
+    }, [orderId]);
 
     return (
         <div>
