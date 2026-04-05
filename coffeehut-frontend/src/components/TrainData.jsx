@@ -1,5 +1,3 @@
-// 角色5 负责 - 铁路数据
-function TrainData() {
-  return <div><h1>Train Data</h1></div>;
+export default function TrainData() {
+  return <div className="p-8 text-center"><h1 className="text-2xl font-bold">Train Data (Customer)</h1></div>;
 }
-export default TrainData;
