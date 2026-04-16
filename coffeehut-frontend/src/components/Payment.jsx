@@ -1,5 +1,3 @@
-// 角色4 负责 - 支付
-function Payment() {
-  return <div><h1>Payment</h1></div>;
+export default function Payment() {
+  return <div className="p-8 text-center"><h1 className="text-2xl font-bold">Payment Page (Customer)</h1></div>;
 }
-export default Payment;
