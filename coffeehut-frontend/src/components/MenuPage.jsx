@@ -719,5 +719,3 @@ function RegisterPage({ onSuccess, onGoLogin, onBack }) {
     </>
   );
 }
-
-export default MenuPage;

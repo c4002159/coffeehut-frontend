@@ -1,5 +1,3 @@
-// 角色6 负责 - 会员积分
-function LoyaltyScheme() {
-  return <div><h1>Loyalty Scheme</h1></div>;
+export default function LoyaltyScheme() {
+  return <div className="p-8 text-center"><h1 className="text-2xl font-bold">Loyalty Scheme (Customer)</h1></div>;
 }
-export default LoyaltyScheme;
