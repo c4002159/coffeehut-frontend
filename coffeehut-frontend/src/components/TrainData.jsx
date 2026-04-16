@@ -1,4 +1,3 @@
-// 角色5 负责 - 铁路数据
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -178,5 +177,3 @@ function TrainData() {
     </>
   );
 }
-
-export default TrainData;
