@@ -14,18 +14,29 @@ function readMember() {
   }
 }
 
-export default function LoyaltyScheme() {
+export default function LoyaltyScheme({ initialView = 'landing' }) {
   const navigate = useNavigate();
   const [member, setMember] = useState(() => readMember());
+  const [view, setView] = useState(initialView);
   const [orderStatusOn, setOrderStatusOn] = useState(true);
   const [readyOn, setReadyOn] = useState(true);
   const [promosOn, setPromosOn] = useState(false);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [registerForm, setRegisterForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+  });
 
   useEffect(() => {
     const onStorage = () => setMember(readMember());
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
+
+  useEffect(() => {
+    setView(initialView);
+  }, [initialView]);
 
   const totalOrders = useMemo(() => {
     const n = Number(member?.totalOrders);
@@ -55,27 +66,176 @@ export default function LoyaltyScheme() {
 
   const handleLogout = useCallback(() => {
     localStorage.clear();
+    setMember(null);
+    setView('landing');
     navigate('/');
   }, [navigate]);
+
+  const saveMember = useCallback((nextMember) => {
+    localStorage.setItem('member', JSON.stringify(nextMember));
+    setMember(nextMember);
+  }, []);
+
+  const handleLogin = useCallback(
+    (e) => {
+      e.preventDefault();
+      const email = loginForm.email.trim();
+      if (!email) return;
+      const nextMember = {
+        name: email.split('@')[0] || 'Member',
+        email,
+        totalOrders: member?.totalOrders ?? 0,
+      };
+      saveMember(nextMember);
+      setView('profile');
+      navigate('/loyalty/profile');
+    },
+    [loginForm.email, member?.totalOrders, navigate, saveMember]
+  );
+
+  const handleRegister = useCallback(
+    (e) => {
+      e.preventDefault();
+      const name = registerForm.name.trim() || 'Member';
+      const email = registerForm.email.trim();
+      if (!email) return;
+      const nextMember = { name, email, totalOrders: 0 };
+      saveMember(nextMember);
+      setView('profile');
+      navigate('/loyalty/profile');
+    },
+    [navigate, registerForm.email, registerForm.name, saveMember]
+  );
+
+  if (!member && view === 'landing') {
+    return (
+      <div className="loyalty-page">
+        <section className="loyalty-hero">
+          <h1 className="loyalty-brand">Whistlestop</h1>
+          <div className="loyalty-promo">Collect 9 orders and get your next one free</div>
+          <button
+            type="button"
+            className="loyalty-cta primary"
+            onClick={() => {
+              setView('register');
+              navigate('/loyalty/register');
+            }}
+          >
+            Join Loyalty
+          </button>
+          <button
+            type="button"
+            className="loyalty-cta"
+            onClick={() => {
+              setView('login');
+              navigate('/loyalty/login');
+            }}
+          >
+            Login
+          </button>
+        </section>
+      </div>
+    );
+  }
+
+  if (!member && view === 'login') {
+    return (
+      <div className="loyalty-page">
+        <header className="loyalty-header">
+          <button type="button" className="loyalty-back" onClick={() => navigate('/loyalty')}>
+            Back
+          </button>
+          <h1 className="loyalty-title">Welcome Back</h1>
+        </header>
+        <form className="loyalty-form-card" onSubmit={handleLogin}>
+          <label className="loyalty-label" htmlFor="login-email">Email</label>
+          <input
+            id="login-email"
+            className="loyalty-input"
+            type="email"
+            required
+            value={loginForm.email}
+            onChange={(e) => setLoginForm((v) => ({ ...v, email: e.target.value }))}
+          />
+          <label className="loyalty-label" htmlFor="login-password">Password</label>
+          <input
+            id="login-password"
+            className="loyalty-input"
+            type="password"
+            required
+            value={loginForm.password}
+            onChange={(e) => setLoginForm((v) => ({ ...v, password: e.target.value }))}
+          />
+          <button type="submit" className="loyalty-cta primary">Sign in</button>
+          <p className="loyalty-switch">
+            New customer?{' '}
+            <button
+              type="button"
+              className="loyalty-link-btn"
+              onClick={() => {
+                setView('register');
+                navigate('/loyalty/register');
+              }}
+            >
+              Create an account
+            </button>
+          </p>
+        </form>
+      </div>
+    );
+  }
+
+  if (!member && view === 'register') {
+    return (
+      <div className="loyalty-page">
+        <header className="loyalty-header">
+          <button type="button" className="loyalty-back" onClick={() => navigate('/')}>
+            Back
+          </button>
+          <h1 className="loyalty-title">Create Account</h1>
+        </header>
+        <form className="loyalty-form-card" onSubmit={handleRegister}>
+          <label className="loyalty-label" htmlFor="register-name">Name</label>
+          <input
+            id="register-name"
+            className="loyalty-input"
+            type="text"
+            required
+            value={registerForm.name}
+            onChange={(e) => setRegisterForm((v) => ({ ...v, name: e.target.value }))}
+          />
+          <label className="loyalty-label" htmlFor="register-email">Email</label>
+          <input
+            id="register-email"
+            className="loyalty-input"
+            type="email"
+            required
+            value={registerForm.email}
+            onChange={(e) => setRegisterForm((v) => ({ ...v, email: e.target.value }))}
+          />
+          <label className="loyalty-label" htmlFor="register-password">Password</label>
+          <input
+            id="register-password"
+            className="loyalty-input"
+            type="password"
+            required
+            value={registerForm.password}
+            onChange={(e) => setRegisterForm((v) => ({ ...v, password: e.target.value }))}
+          />
+          <button type="submit" className="loyalty-cta primary">Create account</button>
+        </form>
+      </div>
+    );
+  }
 
   if (!member) {
     return (
       <div className="loyalty-page">
-        <header className="loyalty-header">
-          <button
-            type="button"
-            className="loyalty-back"
-            onClick={() => navigate(-1)}
-          >
-            Back
-          </button>
-          <h1 className="loyalty-title">Profile</h1>
-        </header>
         <div className="loyalty-guest">
           <p>You are not signed in.</p>
-          <p>
-            <a href="/">Return home</a> to log in or register.
-          </p>
+          <button type="button" className="loyalty-cta primary" onClick={() => navigate('/loyalty')}>
+            Return to loyalty
+          </button>
         </div>
       </div>
     );

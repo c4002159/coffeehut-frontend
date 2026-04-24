@@ -100,6 +100,11 @@ export default function Payment() {
   const [loading, setLoading] = useState(false);
   const [orderError, setOrderError] = useState(null);
   const [checkoutCustomerId, setCheckoutCustomerId] = useState('');
+  /** After a successful pay + order save: show refund / continue without losing summary */
+  const [completedOrder, setCompletedOrder] = useState(null);
+  const [refundLoading, setRefundLoading] = useState(false);
+  const [refundError, setRefundError] = useState(null);
+  const [refundMessage, setRefundMessage] = useState(null);
 
   useEffect(() => {
     const next = normalizeCart(location.state);
@@ -122,19 +127,26 @@ export default function Payment() {
     );
   }, [cart]);
 
+  const displayCart = completedOrder?.cart ?? cart;
+
   const { subtotal, tax, total } = useMemo(
-    () => (cart ? totals(cart) : { subtotal: 0, tax: 0, total: 0 }),
-    [cart]
+    () =>
+      displayCart
+        ? totals(displayCart)
+        : { subtotal: 0, tax: 0, total: 0 },
+    [displayCart]
   );
 
   const runPayment = useCallback(async () => {
-    if (!cart || cart.items.length === 0) return;
+    if (!displayCart || displayCart.items.length === 0) return;
     setPayError(null);
     setOrderError(null);
+    setRefundMessage(null);
+    setRefundError(null);
     setLoading(true);
     const idForRequest =
       checkoutCustomerId ||
-      `CUST-${String(cart.customerName).replace(/\s+/g, '_')}-${Date.now()}`;
+      `CUST-${String(displayCart.customerName).replace(/\s+/g, '_')}-${Date.now()}`;
 
     try {
       const payRes = await fetch('/api/payment/pay', {
@@ -143,9 +155,9 @@ export default function Payment() {
         body: JSON.stringify({
           customerId: idForRequest,
           amount: total,
-          customerName: cart.customerName,
-          pickupTime: cart.pickupTime,
-          items: cart.items,
+          customerName: displayCart.customerName,
+          pickupTime: displayCart.pickupTime,
+          items: displayCart.items,
         }),
       });
       let payData = null;
@@ -166,9 +178,9 @@ export default function Payment() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerId: idForRequest,
-          customerName: cart.customerName,
-          pickupTime: cart.pickupTime,
-          items: cart.items,
+          customerName: displayCart.customerName,
+          pickupTime: displayCart.pickupTime,
+          items: displayCart.items,
           subtotal,
           tax,
           total,
@@ -191,9 +203,19 @@ export default function Payment() {
       }
 
       const oid = orderIdFromResponse(orderData);
-      navigate('/order-status', {
-        state: { orderId: oid != null ? String(oid) : idForRequest },
+      const orderIdStr = oid != null ? String(oid) : idForRequest;
+      setCompletedOrder({
+        cart: normalizeCart(JSON.parse(JSON.stringify(displayCart))),
+        orderId: orderIdStr,
+        customerId: idForRequest,
+        amount: total,
       });
+      try {
+        sessionStorage.removeItem(CART_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      setCart(null);
     } catch (e) {
       setPayError(
         e instanceof Error ? e.message : 'Network error. Please try again.'
@@ -201,7 +223,55 @@ export default function Payment() {
     } finally {
       setLoading(false);
     }
-  }, [cart, checkoutCustomerId, navigate, subtotal, tax, total]);
+  }, [checkoutCustomerId, displayCart, subtotal, tax, total]);
+
+  const runRefund = useCallback(async () => {
+    if (!completedOrder) return;
+    setRefundError(null);
+    setRefundMessage(null);
+    setRefundLoading(true);
+    try {
+      const res = await fetch('/api/payment/refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: completedOrder.customerId,
+          orderId: completedOrder.orderId,
+          amount: completedOrder.amount,
+        }),
+      });
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+      if (!paymentSucceeded(res, data)) {
+        setRefundError(failureMessage(data, res));
+        return;
+      }
+      setRefundMessage(
+        typeof data?.message === 'string' && data.message.trim()
+          ? data.message.trim()
+          : 'Refund completed successfully.'
+      );
+      setCompletedOrder(null);
+    } catch (e) {
+      setRefundError(
+        e instanceof Error ? e.message : 'Network error. Please try again.'
+      );
+    } finally {
+      setRefundLoading(false);
+    }
+  }, [completedOrder]);
+
+  const goToOrderStatus = useCallback(() => {
+    if (!completedOrder) return;
+    navigate('/order-status', {
+      state: { orderId: completedOrder.orderId },
+    });
+    setCompletedOrder(null);
+  }, [completedOrder, navigate]);
 
   const persistCartAndGoBack = useCallback(() => {
     if (cart) {
@@ -214,7 +284,28 @@ export default function Payment() {
     navigate(-1);
   }, [cart, navigate]);
 
-  if (!cart || cart.items.length === 0) {
+  if (
+    (!cart || cart.items.length === 0) &&
+    !completedOrder
+  ) {
+    if (refundMessage) {
+      return (
+        <div className="payment-page">
+          <div className="payment-empty">
+            <p className="payment-refund-ok">{refundMessage}</p>
+            <p>
+              <button
+                type="button"
+                className="payment-back"
+                onClick={() => navigate('/')}
+              >
+                Back to home
+              </button>
+            </p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="payment-page">
         <div className="payment-empty">
@@ -250,14 +341,14 @@ export default function Payment() {
         <h2>Order summary</h2>
         <div className="payment-row">
           <span>Customer</span>
-          <span>{cart.customerName}</span>
+          <span>{displayCart.customerName}</span>
         </div>
         <div className="payment-row payment-row-muted">
           <span>Pickup time</span>
-          <span>{cart.pickupTime}</span>
+          <span>{displayCart.pickupTime}</span>
         </div>
         <div style={{ marginTop: '0.75rem' }}>
-          {cart.items.map((it, idx) => (
+          {displayCart.items.map((it, idx) => (
             <div key={`${it.name}-${idx}`} className="payment-drink-line">
               <div className="payment-row">
                 <span>
@@ -286,7 +377,8 @@ export default function Payment() {
           <span>£{total.toFixed(2)}</span>
         </div>
         <p className="payment-customer-id">
-          Reference: {checkoutCustomerId || '…'}
+          Reference:{' '}
+          {(completedOrder?.customerId ?? checkoutCustomerId) || '…'}
         </p>
       </section>
 
@@ -305,7 +397,43 @@ export default function Payment() {
         </div>
       )}
 
-      {!payError && !orderError && (
+      {completedOrder && (
+        <div className="payment-success-card">
+          <h3>Payment successful</h3>
+          <p>
+            Order reference: <strong>{completedOrder.orderId}</strong>
+          </p>
+          <p className="payment-success-hint">
+            You can request a full refund for this payment, or continue to order
+            status.
+          </p>
+          {refundError && (
+            <p className="payment-refund-error">{refundError}</p>
+          )}
+          {refundMessage && (
+            <p className="payment-refund-ok">{refundMessage}</p>
+          )}
+          <div className="payment-success-actions">
+            <button
+              type="button"
+              className="payment-refund-btn"
+              disabled={refundLoading || !!refundMessage}
+              onClick={runRefund}
+            >
+              {refundLoading ? 'Processing refund…' : 'Request refund'}
+            </button>
+            <button
+              type="button"
+              className="payment-action-btn primary"
+              onClick={goToOrderStatus}
+            >
+              View order status
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!completedOrder && !payError && !orderError && (
         <button
           type="button"
           className="payment-pay-btn"

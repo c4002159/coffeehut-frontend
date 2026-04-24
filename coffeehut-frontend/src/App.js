@@ -15,7 +15,10 @@ function App() {
         <Route path="/staff" element={<StaffDashboard />} />
         <Route path="/payment" element={<Payment />} />
         <Route path="/train" element={<TrainData />} />
-        <Route path="/loyalty" element={<LoyaltyScheme />} />
+        <Route path="/loyalty" element={<LoyaltyScheme initialView="landing" />} />
+        <Route path="/loyalty/login" element={<LoyaltyScheme initialView="login" />} />
+        <Route path="/loyalty/register" element={<LoyaltyScheme initialView="register" />} />
+        <Route path="/loyalty/profile" element={<LoyaltyScheme initialView="profile" />} />
       </Routes>
     </Router>
   );
