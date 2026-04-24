@@ -1,6 +1,0 @@
-package com.coffeehut.sixZhangkaichen;
-import org.springframework.data.jpa.repository.JpaRepository;
-import java.util.Optional;
-public interface MemberOrderLinkRepository extends JpaRepository<MemberOrderLink, Long> {
-    Optional<MemberOrderLink> findByOrderId(Long orderId);
-}
