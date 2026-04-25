@@ -6,9 +6,9 @@ const SCHEDULE_IMAGE = "https://lh3.googleusercontent.com/aida-public/AB6AXuCpUO
 export default function Schedule() {
     const navigate = useNavigate();
     const openingHours = [
-        { day: "Monday - Friday", open: "09:00 AM", close: "06:00 PM", isClosed: false },
-        { day: "Saturday", open: "10:00 AM", close: "04:00 PM", isClosed: false },
-        { day: "Sunday", open: "Closed All Day", close: "", isClosed: true }
+        { day: "Monday - Friday", open: "12:00 AM", close: "11:59 PM", isClosed: false },
+        { day: "Saturday", open: "12:00 AM", close: "11:59 PM", isClosed: false },
+        { day: "Sunday", open: "12:00 AM", close: "11:59 PM", isClosed: false }
     ];
 
     return (

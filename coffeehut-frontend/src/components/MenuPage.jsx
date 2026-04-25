@@ -1,42 +1,3 @@
-<<<<<<< HEAD
-import { useNavigate } from 'react-router-dom';
-import './MenuPage.css';
-
-function MenuPage() {
-  const navigate = useNavigate();
-
-  return (
-    <main className="menu-page">
-      <header className="menu-header">
-        <h1 className="menu-brand">Whistlestop</h1>
-        <button
-          type="button"
-          className="menu-profile-btn"
-          aria-label="Open register page"
-          onClick={() => navigate('/loyalty/register')}
-        >
-          👤
-        </button>
-      </header>
-
-      <section className="menu-hero">
-        <p>Fresh brews, every journey.</p>
-      </section>
-
-      <section className="menu-actions">
-        <button type="button" className="menu-btn primary" onClick={() => navigate('/loyalty')}>
-          Loyalty
-        </button>
-        <button type="button" className="menu-btn" onClick={() => navigate('/payment')}>
-          Payment Demo
-        </button>
-      </section>
-    </main>
-  );
-}
-
-export default MenuPage;
-=======
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -44,13 +5,28 @@ function MenuPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuItems, setMenuItems] = useState([]);
-  const [cart, setCart] = useState([]);
-  const [page, setPage] = useState('home');
+  const [cart, setCart] = useState(() => location.state?.cartItems?.length ? location.state.cartItems : []);
+  const [page, setPage] = useState(() => location.state?.page || 'home');
   const [customerName, setCustomerName] = useState('');
+
+  // Re-sync page/cart when location.state changes (e.g. nav clicks or reorder navigation)
+  useEffect(() => {
+    const cached = localStorage.getItem("menuItems");
+    if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
+    if (location.state?.page) setPage(location.state.page);
+    if (location.state?.cartItems) setCart(location.state.cartItems);
+  }, [location.state]);
   const [customerPhone, setCustomerPhone] = useState('');
-  const [pickupTime, setPickupTime] = useState('');
+  const getDefaultDate = () => new Date().toISOString().slice(0, 10);
+  const getDefaultPickupTime = () => { const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0); return d.toISOString().slice(0, 16); };
+  const [pickupDate, setPickupDate] = useState(getDefaultDate);
+  const [pickupHour, setPickupHour] = useState(String(new Date().getHours()).padStart(2,"0"));
+  const [pickupMinute, setPickupMinute] = useState(String(Math.ceil(new Date().getMinutes()/5)*5%60).padStart(2,"0"));
+  const [pickupTime, setPickupTime] = useState(getDefaultPickupTime);
   const [pickupMode, setPickupMode] = useState('time');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState(null);
   const [selectedSize, setSelectedSize] = useState('Regular');
   const [selectedMilk, setSelectedMilk] = useState('Whole Milk');
@@ -65,13 +41,17 @@ function MenuPage() {
   });
 
   useEffect(() => {
+    const cached = localStorage.getItem("menuItems");
+    if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
     fetch('http://localhost:8080/api/menu')
       .then(res => res.json())
-      .then(data => { setMenuItems(data); setLoading(false); })
+      .then(data => { setMenuItems(data); setLoading(false); localStorage.setItem("menuItems", JSON.stringify(data)); })
       .catch(() => setLoading(false));
   }, []);
 
   useEffect(() => {
+    const cached = localStorage.getItem("menuItems");
+    if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
     if (location.state?.suggestedPickupTime) {
       setPickupTime(location.state.suggestedPickupTime);
       setPickupMode('train');
@@ -95,6 +75,12 @@ function MenuPage() {
     }).filter(Boolean));
   };
 
+  const setQtyDirect = (id, size, val) => {
+    const n = parseInt(val, 10);
+    if (isNaN(n) || n < 1) return;
+    const capped = Math.min(n, 999);
+    setCart(cart.map(c => c.id === id && c.size === size ? { ...c, quantity: capped } : c));
+  };
   const total = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
@@ -113,10 +99,14 @@ function MenuPage() {
       alert('Please enter your name and pickup time!');
       return;
     }
-    navigate('/payment', { state: { cart, customerName, customerPhone, pickupTime, total } });
+    navigate('/payment', { state: { items: cart, customerName, pickupTime } });
   };
 
   const popularItems = menuItems.slice(0, 2);
+
+  const filteredMenuItems = searchQuery.trim()
+    ? menuItems.filter(item => item.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : menuItems;
 
   const coffeeImages = {
     'Americano': 'https://lh3.googleusercontent.com/aida-public/AB6AXuD06yMNSMpBQMHgImurP7s5KbSwQE1h8lP0DG1JJEdvehJq1diRwvrMw8t1Q4D5kPhGuM-meL2jeQVS995xRvzUUflMnZbIc8vkqAAU-MbuKEnzXaA0rb63U6lGk62zfCPfTF3s1Q_xAM60G0TRZqHxwxdy0shM_J_QTnh69dtphuSh8_IJbtVGIHp7_ehYH2f8HRtqU9SaF4d38zRJg3YuzCL8BZp7MbwGpqPFRn7f6BjtzmMrLL8MjXGhcFHSy_SM6N1OxGF9Hjs',
@@ -142,6 +132,7 @@ function MenuPage() {
   };
 
   const openCustomize = (item) => {
+    if (item.name === "Mineral Water") { addToCart(item, "Regular"); return; }
     setCustomizeItem(item);
     setSelectedSize('Regular');
     setSelectedMilk('Whole Milk');
@@ -161,7 +152,7 @@ function MenuPage() {
   };
 
   // ── LOGIN PAGE ──
-  if (authPage === 'login') {
+  if (authPage === "login") {
     return <LoginPage
       onSuccess={(m) => { localStorage.setItem('member', JSON.stringify(m)); setMember(m); setAuthPage(null); }}
       onGoRegister={() => setAuthPage('register')}
@@ -184,27 +175,32 @@ function MenuPage() {
     const basePrice = selectedSize === 'Regular' ? item.regularPrice : item.largePrice;
     const extrasTotal = EXTRAS.filter(e => selectedExtras.includes(e.label)).reduce((s, e) => s + e.price, 0);
     const totalPrice = (basePrice || 0) + extrasTotal;
-    const sectionStyle = { background: 'white', borderRadius: '14px', padding: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', marginBottom: '12px' };
-    const sectionTitle = { margin: '0 0 14px', fontSize: '15px', fontWeight: '700', color: '#1a1a1a' };
+    const C2 = { espresso: '#2C1A0E', brown: '#4A3621', cream: '#FAF8F5', creamDark: '#F2EDE6', border: 'rgba(44,26,14,0.09)', borderMid: 'rgba(44,26,14,0.15)', textMain: '#1A1008', textSub: '#7A6A5A', textMuted: '#A89A8A' };
+    const sectionStyle = { background: 'white', borderRadius: '16px', padding: '16px', boxShadow: '0 1px 3px rgba(44,26,14,0.06)', border: `1px solid ${C2.border}`, marginBottom: '10px' };
+    const sectionTitle = { margin: '0 0 14px', fontSize: '12px', fontWeight: '700', color: C2.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' };
 
     return (
-      <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", background: '#f7f7f6', minHeight: '100dvh', maxWidth: '100%', margin: '0 auto' }}>
-        <header style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', background: 'white', borderBottom: '1px solid rgba(74,54,33,0.08)', position: 'sticky', top: 0, zIndex: 10 }}>
-          <div onClick={() => setPage('menu')} style={{ width: '38px', height: '38px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '20px', color: '#4A3621' }}>←</div>
-          <h2 style={{ margin: 0, flex: 1, textAlign: 'center', fontSize: '17px', fontWeight: 'bold', paddingRight: '38px' }}>Customise</h2>
+      <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", background: C2.cream, minHeight: '100dvh', maxWidth: '100%', margin: '0 auto' }}>
+        <header style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', background: 'rgba(250,248,245,0.9)', backdropFilter: 'blur(12px)', borderBottom: `1px solid ${C2.border}`, position: 'sticky', top: 0, zIndex: 10 }}>
+          <div onClick={() => setPage('menu')} style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '18px', color: C2.brown, background: C2.creamDark }}>←</div>
+          <h2 style={{ margin: 0, flex: 1, textAlign: 'center', fontSize: '15px', fontWeight: '700', color: C2.textMain, paddingRight: '36px', letterSpacing: '0.01em' }}>Customise</h2>
         </header>
-        <div style={{ padding: '20px 16px 120px' }}>
+
+        <div style={{ padding: '24px 16px 120px' }}>
+          {/* Item preview */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
             {getImage(item.name) && (
-              <div style={{ width: '100px', height: '100px', borderRadius: '16px', overflow: 'hidden' }}>
+              <div style={{ width: '96px', height: '96px', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 4px 20px rgba(44,26,14,0.18)' }}>
                 <img src={getImage(item.name)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               </div>
             )}
             <div style={{ textAlign: 'center' }}>
-              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#1a1a1a' }}>{item.name}</h2>
-              <p style={{ margin: '4px 0 0', fontSize: '17px', fontWeight: '700', color: '#4A3621' }}>£{totalPrice.toFixed(2)}</p>
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: C2.textMain, letterSpacing: '-0.02em' }}>{item.name}</h2>
+              <p style={{ margin: '5px 0 0', fontSize: '18px', fontWeight: '700', color: C2.espresso }}>£{totalPrice.toFixed(2)}</p>
             </div>
           </div>
+
+          {/* Size */}
           <div style={sectionStyle}>
             <p style={sectionTitle}>Size</p>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -212,315 +208,443 @@ function MenuPage() {
                 const sizePrice = size === 'Regular' ? item.regularPrice : item.largePrice;
                 const active = selectedSize === size;
                 return (
-                  <button key={size} onClick={() => setSelectedSize(size)} style={{ flex: 1, padding: '14px 10px', borderRadius: '12px', border: `2px solid ${active ? '#4A3621' : 'rgba(74,54,33,0.15)'}`, background: active ? 'rgba(74,54,33,0.08)' : 'white', cursor: 'pointer', textAlign: 'center' }}>
-                    <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: active ? '#4A3621' : '#555' }}>{size}</p>
-                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: active ? '#4A3621' : '#888' }}>£{sizePrice?.toFixed(2)}</p>
+                  <button key={size} onClick={() => setSelectedSize(size)} style={{ flex: 1, padding: '14px 10px', borderRadius: '12px', border: `2px solid ${active ? C2.espresso : C2.borderMid}`, background: active ? 'rgba(44,26,14,0.07)' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: active ? C2.espresso : C2.textSub }}>{size}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: active ? C2.brown : C2.textMuted, fontWeight: '600' }}>£{sizePrice?.toFixed(2)}</p>
                   </button>
                 );
               })}
             </div>
           </div>
+
+          {/* Milk */}
           <div style={sectionStyle}>
             <p style={sectionTitle}>Milk Type</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               {['Whole Milk', 'Oat Milk', 'Almond Milk', 'Soy Milk'].map(milk => {
                 const active = selectedMilk === milk;
                 return (
-                  <button key={milk} onClick={() => setSelectedMilk(milk)} style={{ padding: '12px', borderRadius: '12px', border: `2px solid ${active ? '#4A3621' : 'rgba(74,54,33,0.12)'}`, background: active ? 'rgba(74,54,33,0.05)' : 'white', cursor: 'pointer', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: active ? '#4A3621' : '#555' }}>
+                  <button key={milk} onClick={() => setSelectedMilk(milk)} style={{ padding: '12px', borderRadius: '12px', border: `2px solid ${active ? C2.espresso : C2.border}`, background: active ? 'rgba(44,26,14,0.07)' : C2.cream, cursor: 'pointer', textAlign: 'center', fontSize: '13px', fontWeight: '700', color: active ? C2.espresso : C2.textSub, transition: 'all 0.15s' }}>
                     {milk}
                   </button>
                 );
               })}
             </div>
           </div>
+
+          {/* Sugar */}
           <div style={sectionStyle}>
             <p style={sectionTitle}>Sugar Level</p>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
               {['No', '25%', '50%', '75%', '100%'].map((level, i) => {
                 const active = selectedSugar === level;
-                const heights = [16, 28, 40, 52, 64];
+                const heights = [14, 26, 38, 50, 62];
                 return (
-                  <div key={level} onClick={() => setSelectedSugar(level)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                    <div style={{ width: '100%', height: `${heights[i]}px`, borderRadius: '6px', background: active ? '#4A3621' : 'rgba(74,54,33,0.15)', transition: 'background 0.15s' }} />
-                    <span style={{ fontSize: '11px', fontWeight: active ? '700' : '500', color: active ? '#4A3621' : '#888' }}>{level}</span>
+                  <div key={level} onClick={() => setSelectedSugar(level)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '7px', cursor: 'pointer' }}>
+                    <div style={{ width: '100%', height: `${heights[i]}px`, borderRadius: '8px', background: active ? C2.espresso : C2.creamDark, transition: 'background 0.18s', border: `1px solid ${active ? C2.espresso : C2.border}` }} />
+                    <span style={{ fontSize: '11px', fontWeight: active ? '700' : '500', color: active ? C2.espresso : C2.textMuted }}>{level}</span>
                   </div>
                 );
               })}
             </div>
           </div>
+
+          {/* Temperature */}
           <div style={sectionStyle}>
             <p style={sectionTitle}>Temperature</p>
             <div style={{ display: 'flex', gap: '10px' }}>
               {[{ label: 'Hot', icon: '🔥' }, { label: 'Warm', icon: '🌡️' }, { label: 'Iced', icon: '❄️' }].map(({ label, icon }) => {
                 const active = selectedTemp === label;
                 return (
-                  <button key={label} onClick={() => setSelectedTemp(label)} style={{ flex: 1, padding: '14px 8px', borderRadius: '12px', border: `2px solid ${active ? '#4A3621' : 'rgba(74,54,33,0.15)'}`, background: active ? 'rgba(74,54,33,0.08)' : 'white', cursor: 'pointer', textAlign: 'center' }}>
-                    <div style={{ fontSize: '22px', marginBottom: '4px' }}>{icon}</div>
-                    <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: active ? '#4A3621' : '#555' }}>{label}</p>
+                  <button key={label} onClick={() => setSelectedTemp(label)} style={{ flex: 1, padding: '14px 8px', borderRadius: '12px', border: `2px solid ${active ? C2.espresso : C2.border}`, background: active ? 'rgba(44,26,14,0.07)' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}>
+                    <div style={{ fontSize: '22px', marginBottom: '6px' }}>{icon}</div>
+                    <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: active ? C2.espresso : C2.textSub }}>{label}</p>
                   </button>
                 );
               })}
             </div>
           </div>
+
+          {/* Extras */}
           <div style={sectionStyle}>
             <p style={sectionTitle}>Extras</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {EXTRAS.map(({ label, price }) => {
                 const checked = selectedExtras.includes(label);
                 return (
-                  <div key={label} onClick={() => toggleExtra(label)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: '12px', border: `2px solid ${checked ? '#4A3621' : 'rgba(74,54,33,0.12)'}`, background: checked ? 'rgba(74,54,33,0.05)' : 'white', cursor: 'pointer' }}>
+                  <div key={label} onClick={() => toggleExtra(label)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: '12px', border: `2px solid ${checked ? C2.espresso : C2.border}`, background: checked ? 'rgba(44,26,14,0.05)' : C2.cream, cursor: 'pointer', transition: 'all 0.15s' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '20px', height: '20px', borderRadius: '6px', border: `2px solid ${checked ? '#4A3621' : '#ccc'}`, background: checked ? '#4A3621' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {checked && <span style={{ color: 'white', fontSize: '12px', fontWeight: 'bold' }}>✓</span>}
+                      <div style={{ width: '20px', height: '20px', borderRadius: '6px', border: `2px solid ${checked ? C2.espresso : C2.borderMid}`, background: checked ? C2.espresso : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
+                        {checked && <span style={{ color: 'white', fontSize: '11px', fontWeight: '700' }}>✓</span>}
                       </div>
-                      <span style={{ fontSize: '14px', fontWeight: '600', color: checked ? '#4A3621' : '#333' }}>{label}</span>
+                      <span style={{ fontSize: '14px', fontWeight: '600', color: checked ? C2.espresso : C2.textSub }}>{label}</span>
                     </div>
-                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#888' }}>+£{price.toFixed(2)}</span>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: C2.textMuted }}>+£{price.toFixed(2)}</span>
                   </div>
                 );
               })}
             </div>
           </div>
+
+          {/* Special instructions */}
           <div style={sectionStyle}>
             <p style={sectionTitle}>Special Instructions</p>
             <textarea value={specialNotes} onChange={e => setSpecialNotes(e.target.value)} placeholder="Any special requests..." rows={3}
-              style={{ width: '100%', boxSizing: 'border-box', border: '1px solid rgba(74,54,33,0.2)', borderRadius: '12px', padding: '12px', fontSize: '14px', outline: 'none', resize: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: '#333' }} />
+              style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C2.borderMid}`, borderRadius: '12px', padding: '12px', fontSize: '14px', outline: 'none', resize: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C2.textMain, background: 'white' }} />
           </div>
         </div>
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white', borderTop: '1px solid #f1f5f9', padding: '16px 16px calc(16px + env(safe-area-inset-bottom, 0px))' }}>
+
+        <div style={{ position: 'sticky', bottom: 0, background: 'white', borderTop: `1px solid ${C2.border}`, padding: '16px' }}>
           <button onClick={() => { addToCart(item, selectedSize, { milk: selectedMilk, sugar: selectedSugar, temp: selectedTemp, extras: selectedExtras, notes: specialNotes, extrasTotal }); setPage('menu'); }}
-            style={{ width: '100%', background: '#4A3621', color: 'white', border: 'none', borderRadius: '14px', padding: '16px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            style={{ width: '100%', background: C2.espresso, color: 'white', border: 'none', borderRadius: '14px', padding: '17px', fontSize: '15px', fontWeight: '700', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 3px 12px rgba(44,26,14,0.28)', letterSpacing: '0.01em' }}>
             <span>Add to Order</span>
-            <span>£{totalPrice.toFixed(2)}</span>
+            <span style={{ fontWeight: '800' }}>£{totalPrice.toFixed(2)}</span>
           </button>
         </div>
       </div>
     );
   }
 
-  // ── HOME PAGE ──
-  if (page === 'home') return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", background: '#f7f7f6', minHeight: '100dvh', maxWidth: '100%', margin: '0 auto', position: 'relative' }}>
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'white', position: 'sticky', top: 0, zIndex: 10, borderBottom: '1px solid rgba(74,54,33,0.08)' }}>
-        <div style={{ color: '#4A3621', fontSize: '22px' }}>📍</div>
-        <h1 style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: '#1a1a1a' }}>Whistlestop Coffee Hut</h1>
-        <div onClick={() => setAuthPage('login')} style={{ width: '38px', height: '38px', borderRadius: '50%', background: member ? '#4A3621' : 'rgba(74,54,33,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '18px' }}>
-          {member ? <span style={{ color: 'white', fontSize: '13px', fontWeight: 'bold' }}>{member.name?.[0]?.toUpperCase()}</span> : '👤'}
-        </div>
-      </header>
-      <div style={{ maxWidth: '680px', margin: '0 auto', width: '100%' }}>
-        <div style={{ padding: '16px 16px 0' }}>
-          <div style={{ borderRadius: '16px', overflow: 'hidden', position: 'relative', height: '180px' }}>
-            <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLwg1bs2Uv-hJEjU4qErsQ45aCvwXEdK2tX_Fsi8uukBRTFShRbHDtibmWnJgeGW4fVHU6OFRTbFOo-34MFKZuOOgIa_8S9FRUtBO6WvH1hkkDN9pb0ZklHOISR6W5_kVe3wQTTGxpZWc0ZbXxswIYklmm4VihYU2rcZyQQjzmRXskbqVP2cZ_7iPaCC-J3M9_7RmtefkBaZSlrP318gaMNklHo2VgkkAFrGfQuEyF3vysI1x-Bc5PHmdXK8DNxB4L0WllgVuXT1I"
-              alt="cafe" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)', display: 'flex', alignItems: 'flex-end', padding: '16px' }}>
-              <div style={{ color: 'white' }}>
-                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>Cramlington Station</h2>
-                <p style={{ margin: '2px 0 0', fontSize: '13px', opacity: 0.9 }}>Fresh brews on the go</p>
-              </div>
+  // ── SINGLE PERSISTENT SHELL ──
+  const C = {
+    espresso: '#2C1A0E',
+    brown: '#4A3621',
+    cream: '#FAF8F5',
+    creamDark: '#F2EDE6',
+    border: 'rgba(44,26,14,0.09)',
+    borderMid: 'rgba(44,26,14,0.15)',
+    textMain: '#1A1008',
+    textSub: '#7A6A5A',
+    textMuted: '#A89A8A',
+  };
+
+  return (
+    <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", background: page === 'cart' ? 'white' : C.cream, minHeight: '100dvh', maxWidth: '100%', margin: '0 auto', position: 'relative' }}>
+      <style>{`
+        @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+        .icon-btn { transition: background 0.15s; }
+        .icon-btn:hover { background: rgba(44,26,14,0.07) !important; }
+        .size-pill { transition: all 0.15s; }
+        .size-pill:hover { background: rgba(44,26,14,0.08) !important; border-color: rgba(44,26,14,0.3) !important; }
+        .add-btn { transition: background 0.15s, transform 0.1s, box-shadow 0.15s; }
+        .add-btn:hover { background: #1e1008 !important; box-shadow: 0 3px 10px rgba(44,26,14,0.35) !important; }
+        .add-btn:active { transform: scale(0.96); }
+        .pop-card { transition: box-shadow 0.18s, transform 0.18s; }
+        .pop-card:hover { box-shadow: 0 6px 24px rgba(44,26,14,0.12) !important; transform: translateY(-2px); }
+        .qty-btn { transition: background 0.12s; }
+        .qty-btn:hover { background: rgba(44,26,14,0.15) !important; }
+        .browse-btn { transition: background 0.18s, box-shadow 0.18s, transform 0.1s; }
+        .browse-btn:hover { background: #1e1008 !important; box-shadow: 0 4px 16px rgba(44,26,14,0.35) !important; }
+        .browse-btn:active { transform: scale(0.98); }
+      `}</style>
+
+      {/* ── HOME PAGE CONTENT ── */}
+      {page === 'home' && (
+        <>
+          {/* Header */}
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(250,248,245,0.9)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 10, borderBottom: `1px solid ${C.border}` }}>
+            
+            <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: C.textMain, letterSpacing: '0.01em' }}>Whistlestop Coffee Hut</h1>
+            <div onClick={() => setAuthPage('login')} className="icon-btn" style={{ width: '36px', height: '36px', borderRadius: '50%', background: member ? C.espresso : C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '16px', border: `1px solid ${C.border}` }}>
+              {member ? <span style={{ color: 'white', fontSize: '13px', fontWeight: '700' }}>{member.name?.[0]?.toUpperCase()}</span> : <span style={{ fontSize: '15px' }}>👤</span>}
             </div>
-          </div>
-        </div>
-        <div style={{ padding: '14px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderRadius: '14px', border: '1px solid rgba(74,54,33,0.1)', background: 'rgba(74,54,33,0.04)' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>🕐</div>
-            <div>
-              <p style={{ margin: 0, fontWeight: '600', fontSize: '14px' }}>Open Today 06:30 – 19:00</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isOpen() ? '#22c55e' : '#ef4444' }}></div>
-                <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Store Status: {isOpen() ? 'Active' : 'Closed'}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div style={{ padding: '0 16px 20px' }}>
-          <button onClick={() => setPage('menu')} style={{ width: '100%', background: '#4A3621', color: 'white', border: 'none', borderRadius: '14px', padding: '16px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            ☕ Browse Menu
-          </button>
-        </div>
-        <div style={{ padding: '0 16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 'bold' }}>Popular Drinks</h3>
-            <span onClick={() => setPage('menu')} style={{ fontSize: '13px', color: '#4A3621', fontWeight: '600', cursor: 'pointer' }}>View all</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 16px))' }}>
-            {popularItems.map(item => (
-              <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ position: 'relative', borderRadius: '14px', overflow: 'hidden', aspectRatio: '1' }}>
-                  {getImage(item.name)
-                    ? <img src={getImage(item.name)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <div style={{ width: '100%', height: '100%', background: 'rgba(74,54,33,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px' }}>☕</div>
-                  }
-                  <button onClick={() => addToCart(item, 'Regular')} style={{ position: 'absolute', bottom: '8px', right: '8px', width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.9)', border: 'none', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#4A3621' }}>+</button>
+          </header>
+
+          <div>
+            {/* Member greeting */}
+            {member && (
+              <div style={{ padding: '8px 16px 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', borderRadius: '16px', background: C.creamDark, border: `1px solid ${C.border}` }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: C.espresso, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '15px', flexShrink: 0 }}>
+                    {member.name?.[0]?.toUpperCase()}
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: C.textMain }}>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {member.name?.split(' ')[0]}!</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '12px', color: C.textSub }}>Ready for your next brew?</p>
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {/* Hero image */}
+            <div style={{ padding: '8px 16px 0' }}>
+              <div style={{ borderRadius: '20px', overflow: 'hidden', position: 'relative', height: '190px', boxShadow: '0 4px 24px rgba(44,26,14,0.15)' }}>
+                <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLwg1bs2Uv-hJEjU4qErsQ45aCvwXEdK2tX_Fsi8uukBRTFShRbHDtibmWnJgeGW4fVHU6OFRTbFOo-34MFKZuOOgIa_8S9FRUtBO6WvH1hkkDN9pb0ZklHOISR6W5_kVe3wQTTGxpZWc0ZbXxswIYklmm4VihYU2rcZyQQjzmRXskbqVP2cZ_7iPaCC-J3M9_7RmtefkBaZSlrP318gaMNklHo2VgkkAFrGfQuEyF3vysI1x-Bc5PHmdXK8DNxB4L0WllgVuXT1I"
+                  alt="cafe" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(20,10,4,0.72) 0%, rgba(20,10,4,0.1) 60%, transparent 100%)', display: 'flex', alignItems: 'flex-end', padding: '20px' }}>
+                  <div style={{ color: 'white' }}>
+                    <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '800', letterSpacing: '-0.02em' }}>Cramlington Station</h2>
+                    <p style={{ margin: '3px 0 0', fontSize: '13px', opacity: 0.8, fontWeight: '500' }}>Fresh brews on the go</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Hours card */}
+            <div style={{ padding: '8px 16px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderRadius: '16px', border: `1px solid ${C.border}`, background: 'white', boxShadow: '0 1px 4px rgba(44,26,14,0.05)' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>🕐</div>
                 <div>
-                  <p style={{ margin: 0, fontWeight: 'bold', fontSize: '14px' }}>{item.name}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#4A3621', fontWeight: '600' }}>£{item.regularPrice?.toFixed(2)}</p>
+                  <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: C.textMain }}>
+                    {(() => {
+                      const ukDay = new Date(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' })).getDay();
+                      if (ukDay === 0) return 'Closed Today (Sunday)';
+                      if (ukDay === 6) return 'Open Today 08:00 – 16:00';
+                      return 'Open Today 06:30 – 19:00';
+                    })()}
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '5px' }}>
+                    <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: isOpen() ? '#16a34a' : '#dc2626', boxShadow: isOpen() ? '0 0 0 2px rgba(22,163,74,0.2)' : '0 0 0 2px rgba(220,38,38,0.2)' }}></div>
+                    <p style={{ margin: 0, fontSize: '12px', color: C.textSub, fontWeight: '500' }}>{isOpen() ? 'Open now' : 'Currently closed'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Browse button */}
+            <div style={{ padding: '8px 16px 0' }}>
+              <button onClick={() => setPage('menu')} className="browse-btn" style={{ width: '100%', background: C.espresso, color: 'white', border: 'none', borderRadius: '16px', padding: '17px', fontSize: '15px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 3px 12px rgba(44,26,14,0.28)', letterSpacing: '0.01em' }}>
+                ☕ Browse Menu
+              </button>
+            </div>
+
+            {/* Popular drinks */}
+            <div style={{ padding: '12px 16px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: C.textMain, letterSpacing: '-0.01em' }}>Popular Drinks</h3>
+                <span onClick={() => setPage('menu')} style={{ fontSize: '13px', color: C.brown, fontWeight: '600', cursor: 'pointer', padding: '4px 0' }}>View all →</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', paddingBottom: '16px' }}>
+                {popularItems.map(item => (
+                  <div key={item.id} className="pop-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'white', borderRadius: '18px', overflow: 'hidden', border: `1px solid ${C.border}`, boxShadow: '0 2px 8px rgba(44,26,14,0.06)', cursor: 'pointer' }} onClick={() => openCustomize(item)}>
+                    <div style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', maxHeight: '220px' }}>
+                      {getImage(item.name)
+                        ? <img src={getImage(item.name)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <div style={{ width: '100%', height: '100%', background: C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px' }}>☕</div>
+                      }
+                      <button onClick={e => { e.stopPropagation(); addToCart(item, 'Regular'); }} style={{ position: 'absolute', bottom: '8px', right: '8px', width: '30px', height: '30px', borderRadius: '50%', background: 'white', border: 'none', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: C.espresso, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>+</button>
+                    </div>
+                    <div style={{ padding: '0 12px 14px' }}>
+                      <p style={{ margin: 0, fontWeight: '700', fontSize: '14px', color: C.textMain }}>{item.name}</p>
+                      <p style={{ margin: '3px 0 0', fontSize: '13px', color: C.brown, fontWeight: '600' }}>£{item.regularPrice?.toFixed(2)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── MENU PAGE CONTENT ── */}
+      {page === 'menu' && (
+        <>
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(250,248,245,0.9)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 10, borderBottom: `1px solid ${C.border}` }}>
+            <div onClick={() => { setPage('home'); setSearchOpen(false); setSearchQuery(''); }} className="icon-btn" style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '18px', color: C.brown, background: C.creamDark }}>←</div>
+            
+            
+          </header>
+
+          {searchOpen && (
+            <div style={{ padding: '10px 16px 12px', background: 'white', borderBottom: `1px solid ${C.border}` }}>
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search drinks…"
+                style={{ width: '100%', boxSizing: 'border-box', height: '44px', borderRadius: '12px', border: `1.5px solid ${C.borderMid}`, background: C.cream, padding: '0 16px', fontSize: '14px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain }}
+              />
+            </div>
+          )}
+
+          <div style={{ padding: '22px 16px 10px' }}>
+            <h1 style={{ margin: 0, fontSize: '30px', fontWeight: '800', color: C.espresso, letterSpacing: '-0.03em', lineHeight: 1.1 }}>Coffee Menu</h1>
+            <p style={{ margin: '6px 0 0', fontSize: '13px', color: C.textMuted, fontWeight: '500' }}>
+              {searchQuery.trim() ? `${filteredMenuItems.length} result${filteredMenuItems.length !== 1 ? 's' : ''} for "${searchQuery}"` : 'Freshly roasted, brewed with care'}
+            </p>
+          </div>
+
+          {loading && (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textMuted }}>
+              <div style={{ fontSize: '32px', marginBottom: '12px' }}>☕</div>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: '500' }}>Loading menu...</p>
+            </div>
+          )}
+          {!loading && filteredMenuItems.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textMuted }}>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🔍</div>
+              <p style={{ margin: 0, fontWeight: '700', fontSize: '15px', color: C.textSub }}>No drinks found</p>
+              <p style={{ margin: '6px 0 0', fontSize: '13px' }}>Try "{searchQuery.slice(0, 1).toUpperCase() + searchQuery.slice(1)}" or a different term</p>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '10px', padding: '8px 16px', paddingBottom: '16px' }}>
+            {filteredMenuItems.map(item => (
+              <div key={item.id} className="menu-card" style={{ overflow: 'hidden', borderRadius: '16px', padding: '14px', background: 'white', boxShadow: '0 1px 3px rgba(44,26,14,0.06), 0 4px 12px rgba(44,26,14,0.04)', border: `1px solid ${C.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 style={{ margin: '0 0 3px', fontSize: '15px', fontWeight: '700', color: C.textMain, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</h3>
+                    <p style={{ margin: '0 0 12px', fontSize: '12px', color: C.textMuted, fontWeight: '400' }}>Rich and freshly brewed.</p>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <button onClick={() => addToCart(item, 'Regular')} className="size-pill" style={{ padding: '5px 11px', borderRadius: '999px', border: `1px solid ${C.borderMid}`, background: C.creamDark, color: C.brown, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          Reg £{item.regularPrice?.toFixed(2)}
+                        </button>
+                        {item.largePrice && (
+                          <button onClick={() => addToCart(item, 'Large')} className="size-pill" style={{ padding: '5px 11px', borderRadius: '999px', border: `1px solid ${C.border}`, background: 'white', color: C.textSub, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                            Lrg £{item.largePrice?.toFixed(2)}
+                          </button>
+                        )}
+                      </div>
+                      <button onClick={() => openCustomize(item)} className="add-btn" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', background: C.espresso, color: 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 2px 6px rgba(44,26,14,0.22)' }}>
+                        + Add
+                      </button>
+                    </div>
+                  </div>
+                  {getImage(item.name) && (
+                    <div style={{ width: '74px', height: '74px', minWidth: '74px', flexShrink: 0, borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(44,26,14,0.1)' }}>
+                      <img src={getImage(item.name)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      </div>
-      <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 999, background: 'white', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-around', alignItems: 'center', paddingTop: '10px', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
-        {[['🏠', 'Home', () => setPage('home'), true], ['☕', 'Menu', () => setPage('menu'), false], ['📦', 'Orders', () => navigate('/order-status'), false], ['👤', 'Profile', () => navigate('/loyalty'), false]].map(([icon, label, action, active]) => (
-          <div key={label} onClick={action} style={{ textAlign: 'center', cursor: 'pointer', color: active ? '#4A3621' : '#9ca3af' }}>
-            <div style={{ fontSize: '22px' }}>{icon}</div>
-            <p style={{ margin: '2px 0 0', fontSize: '10px', fontWeight: active ? 'bold' : '500' }}>{label}</p>
-          </div>
-        ))}
-      </nav>
-    </div>
-  );
 
-  // ── MENU PAGE ──
-  if (page === 'menu') return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", background: '#f7f7f6', minHeight: '100dvh', width: '100%', maxWidth: '100%', overflowX: 'hidden', boxSizing: 'border-box', position: 'relative', margin: '0 auto' }}>
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(247,247,246,0.85)', backdropFilter: 'blur(8px)', position: 'sticky', top: 0, zIndex: 10, borderBottom: '1px solid rgba(74,54,33,0.08)' }}>
-        <div onClick={() => setPage('home')} style={{ width: '38px', height: '38px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '20px', color: '#4A3621' }}>←</div>
-        <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 'bold' }}>Whistlestop Coffee Hut</h2>
-        <div style={{ width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '20px', color: '#4A3621' }}>🔍</div>
-      </header>
-      <div style={{ padding: '20px 16px 8px 16px' }}>
-        <h1 style={{ margin: 0, fontSize: '28px', fontWeight: '800', color: '#4A3621' }}>Coffee Menu</h1>
-        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#888' }}>Freshly roasted daily in small batches</p>
-      </div>
-      {loading && <p style={{ textAlign: 'center', padding: '30px', color: '#999' }}>Loading menu...</p>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(400px, 100%), 1fr))', gap: '12px', padding: '8px 16px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 16px))' }}>
-        {menuItems.map(item => (
-          <div key={item.id} style={{ overflow: 'hidden', borderRadius: '14px', padding: '14px', background: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid rgba(74,54,33,0.05)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '16px', color: '#4A3621' }}>☕</span>
-                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</h3>
-                </div>
-                <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#888' }}>Rich and freshly brewed.</p>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <button onClick={() => addToCart(item, 'Regular')} style={{ padding: '5px 12px', borderRadius: '999px', border: '1px solid rgba(74,54,33,0.2)', background: 'rgba(74,54,33,0.05)', color: '#4A3621', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                      Reg £{item.regularPrice?.toFixed(2)}
-                    </button>
-                    {item.largePrice && (
-                      <button onClick={() => addToCart(item, 'Large')} style={{ padding: '5px 12px', borderRadius: '999px', border: '1px solid rgba(74,54,33,0.1)', background: 'white', color: '#888', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                        Lrg £{item.largePrice?.toFixed(2)}
-                      </button>
-                    )}
+          {cartCount > 0 && (
+            <div onClick={() => setPage('cart')} style={{ position: 'sticky', bottom: '20px', float: 'right', marginRight: '20px', background: C.espresso, color: 'white', borderRadius: '50%', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 6px 20px rgba(44,26,14,0.45)', fontSize: '22px', zIndex: 30 }}>
+              🛒
+              <span style={{ position: 'absolute', top: '-3px', right: '-3px', background: '#dc2626', borderRadius: '50%', width: '20px', height: '20px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', border: '2px solid white' }}>{cartCount}</span>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── CART / ORDER REVIEW CONTENT ── */}
+      {page === 'cart' && (
+        <>
+          <header style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 10 }}>
+            <div onClick={() => setPage('menu')} className="icon-btn" style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '18px', color: C.brown, background: C.creamDark }}>←</div>
+            <h2 style={{ margin: 0, flex: 1, textAlign: 'center', fontSize: '15px', fontWeight: '700', color: C.textMain, paddingRight: '36px', letterSpacing: '0.01em' }}>Order Review</h2>
+          </header>
+
+          <div style={{ paddingBottom: '16px' }}>
+            <div style={{ padding: '20px 16px 10px' }}>
+              <h3 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Selected Drinks</h3>
+            </div>
+
+            {cart.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '50px 20px', color: C.textMuted }}>
+                <div style={{ fontSize: '36px', marginBottom: '12px' }}>🛒</div>
+                <p style={{ margin: 0, fontWeight: '600', color: C.textSub }}>Your cart is empty</p>
+              </div>
+            )}
+
+            {cart.map(item => (
+              <div key={`${item.id}-${item.size}`} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderBottom: `1px solid ${C.border}`, justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '60px', height: '60px', borderRadius: '12px', overflow: 'hidden', background: C.creamDark, flexShrink: 0 }}>
+                    {getImage(item.name) ? <img src={getImage(item.name)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px' }}>☕</div>}
                   </div>
-                  <button onClick={() => openCustomize(item)} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', background: '#4A3621', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    + Add
-                  </button>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: '700', fontSize: '14px', color: C.textMain }}>{item.size} {item.name}</p>
+                    {item.customization && (item.customization.milk || item.customization.temp || item.customization.sugar !== undefined) && (
+                      <p style={{ margin: '3px 0 0', fontSize: '11px', color: C.textMuted, fontWeight: '500' }}>
+                        {[item.customization.temp, item.customization.milk, item.customization.sugar !== 'No' ? `Sugar ${item.customization.sugar}` : null, ...(item.customization.extras || [])].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                    <p style={{ margin: '5px 0 0', fontSize: '14px', fontWeight: '700', color: C.brown }}>£{(item.price * item.quantity).toFixed(2)}</p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                  <button onClick={() => updateQty(item.id, item.size, -1)} className="qty-btn" style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: C.creamDark, cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.brown, fontWeight: '700' }}>−</button>
+                  <input type="number" min="1" max="999" value={item.quantity} onChange={e => setQtyDirect(item.id, item.size, e.target.value)} onKeyDown={e => { if (["e","E","+","-","."].includes(e.key)) e.preventDefault(); }} style={{ width: "48px", textAlign: "center", fontWeight: "700", fontSize: "15px", color: C.textMain, border: "1.5px solid #e2e8f0", borderRadius: "8px", padding: "4px 0", outline: "none", background: "white" }} />
+                  <button onClick={() => updateQty(item.id, item.size, 1)} className="qty-btn" style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: C.creamDark, cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.brown, fontWeight: '700' }}>+</button>
                 </div>
               </div>
-              {getImage(item.name) && (
-                <div style={{ width: '72px', height: '72px', minWidth: '72px', flexShrink: 0, borderRadius: '10px', overflow: 'hidden' }}>
-                  <img src={getImage(item.name)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            ))}
+
+            {/* Pickup time */}
+            <div style={{ padding: '20px 16px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Pickup Time</p>
+                <div style={{ display: 'flex', background: C.creamDark, borderRadius: '10px', padding: '3px', border: `1px solid ${C.border}` }}>
+                  <button onClick={() => setPickupMode('time')} style={{ padding: '6px 12px', borderRadius: '8px', border: 'none', background: pickupMode === 'time' ? 'white' : 'transparent', color: pickupMode === 'time' ? C.espresso : C.textSub, fontSize: '12px', fontWeight: '700', cursor: 'pointer', boxShadow: pickupMode === 'time' ? '0 1px 4px rgba(44,26,14,0.1)' : 'none', transition: 'all 0.15s' }}>Set a time</button>
+                  <button onClick={() => navigate('/train')} style={{ padding: '6px 12px', borderRadius: '8px', border: 'none', background: pickupMode === 'train' ? C.espresso : 'transparent', color: pickupMode === 'train' ? 'white' : C.textSub, fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s' }}>Link my train</button>
+                </div>
+              </div>
+              {pickupMode === 'time' ? (
+<div style={{display:"flex",gap:"10px",flexDirection:"column"}}>
+  <input type="date" value={pickupDate} min={new Date().toISOString().slice(0,10)} 
+    onChange={e=>{setPickupDate(e.target.value);setPickupTime(e.target.value+"T"+pickupHour+":"+pickupMinute);}} 
+    style={{width:"100%",boxSizing:"border-box",border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}/>
+  <div style={{display:"flex",gap:"10px",marginBottom:"4px"}}>
+  <span style={{flex:1,fontSize:"13px",fontWeight:"700",color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em"}}>HOUR</span>
+  <span style={{flex:1,fontSize:"13px",fontWeight:"700",color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em"}}>MINUTE</span>
+</div>
+  <div style={{display:"flex",gap:"10px"}}>
+    <select value={pickupHour} onChange={e=>{setPickupHour(e.target.value);setPickupTime(pickupDate+"T"+e.target.value+":"+pickupMinute);}} 
+      style={{flex:1,border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}>
+{Array.from({length:24},(_,i)=>String(i).padStart(2,"0")).map(h=><option key={h} value={h}>{h}</option>)}    </select>
+    <select value={pickupMinute} onChange={e=>{setPickupMinute(e.target.value);setPickupTime(pickupDate+"T"+pickupHour+":"+e.target.value);}} 
+      style={{flex:1,border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}>
+{["00","05","10","15","20","25","30","35","40","45","50","55"].map(m=><option key={m} value={m}>{m}</option>)}    </select>
+  </div>
+</div>              ) : (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🚆</span>
+                  <span style={{ fontSize: '13px', color: '#166534', fontWeight: '600' }}>Pickup time set to {pickupTime ? new Date(pickupTime + ':00').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''} based on your train</span>
                 </div>
               )}
             </div>
-          </div>
-        ))}
-      </div>
-      {cartCount > 0 && (
-        <div onClick={() => setPage('cart')} style={{ position: 'fixed', bottom: '80px', right: '20px', background: '#4A3621', color: 'white', borderRadius: '50%', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 16px rgba(74,54,33,0.4)', fontSize: '24px', zIndex: 30 }}>
-          🛒
-          <span style={{ position: 'absolute', top: '-2px', right: '-2px', background: '#ef4444', borderRadius: '50%', width: '22px', height: '22px', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', border: '2px solid white' }}>{cartCount}</span>
-        </div>
-      )}
-      <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 999, background: 'white', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-around', alignItems: 'center', paddingTop: '10px', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
-        {[['🏠', 'Home', () => setPage('home'), false], ['☕', 'Menu', () => {}, true], ['📦', 'Orders', () => navigate('/order-status'), false], ['👤', 'Profile', () => navigate('/loyalty'), false]].map(([icon, label, action, active]) => (
-          <div key={label} onClick={action} style={{ textAlign: 'center', cursor: 'pointer', color: active ? '#4A3621' : '#9ca3af' }}>
-            <div style={{ fontSize: '22px' }}>{icon}</div>
-            <p style={{ margin: '2px 0 0', fontSize: '10px', fontWeight: active ? 'bold' : '500' }}>{label}</p>
-          </div>
-        ))}
-      </nav>
-    </div>
-  );
 
-  // ── CART / ORDER REVIEW ──
-  return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", background: 'white', minHeight: '100dvh', maxWidth: '100%', margin: '0 auto' }}>
-      <header style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid rgba(74,54,33,0.08)', background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(8px)', position: 'sticky', top: 0, zIndex: 10 }}>
-        <div onClick={() => setPage('menu')} style={{ width: '38px', height: '38px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '20px', color: '#4A3621' }}>←</div>
-        <h2 style={{ margin: 0, flex: 1, textAlign: 'center', fontSize: '17px', fontWeight: 'bold', paddingRight: '38px' }}>Order Review</h2>
-      </header>
-      <div style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 16px))' }}>
-        <div style={{ padding: '20px 16px 8px' }}>
-          <h3 style={{ margin: '0 0 14px', fontSize: '17px', fontWeight: 'bold' }}>Selected Drinks</h3>
-        </div>
-        {cart.length === 0 && <p style={{ textAlign: 'center', color: '#999', padding: '30px' }}>Your cart is empty</p>}
-        {cart.map(item => (
-          <div key={`${item.id}-${item.size}`} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderBottom: '1px solid #f1f5f9', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '64px', height: '64px', borderRadius: '10px', overflow: 'hidden', background: 'rgba(74,54,33,0.08)', flexShrink: 0 }}>
-                {getImage(item.name) ? <img src={getImage(item.name)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>☕</div>}
-              </div>
+            {/* Name / Phone */}
+            <div style={{ padding: '8px 16px 0' }}>
+              <p style={{ margin: "0 0 10px", fontSize: "13px", fontWeight: "700", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Personal Information</p>
+              <input placeholder="Your name *" value={customerName} onChange={e => setCustomerName(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', marginBottom: '10px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white' }} />
+              <input placeholder="Phone (optional)" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white' }} />
+            </div>
+
+            {/* Pickup location */}
+            <div style={{ margin: '16px 16px 0', background: C.creamDark, borderRadius: '14px', padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: '10px', border: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: '18px', marginTop: '1px' }}>📍</span>
               <div>
-                <p style={{ margin: 0, fontWeight: '600', fontSize: '15px' }}>{item.size} {item.name}</p>
-                <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#888' }}>{item.size}</p>
-                <p style={{ margin: '4px 0 0', fontSize: '13px', fontWeight: 'bold', color: '#4A3621' }}>£{(item.price * item.quantity).toFixed(2)}</p>
+                <p style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: C.textMain }}>Pickup Location</p>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: C.textSub, fontWeight: '500' }}>Cramlington Station, Whistlestop Coffee Hut</p>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-              <button onClick={() => updateQty(item.id, item.size, -1)} style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: 'rgba(74,54,33,0.1)', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A3621', fontWeight: 'bold' }}>−</button>
-              <span style={{ fontWeight: 'bold', minWidth: '20px', textAlign: 'center' }}>{item.quantity}</span>
-              <button onClick={() => updateQty(item.id, item.size, 1)} style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: 'rgba(74,54,33,0.1)', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A3621', fontWeight: 'bold' }}>+</button>
+
+            {/* Order summary */}
+            <div style={{ margin: '16px 16px 0', background: C.creamDark, borderRadius: '16px', padding: '18px', border: `1px solid ${C.border}` }}>
+              {[['Subtotal', `£${total.toFixed(2)}`], ['Service Fee', '£0.50'], ['Tax', `£${(total * 0.09).toFixed(2)}`]].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '13px', color: C.textSub }}>
+                  <span style={{ fontWeight: '500' }}>{label}</span><span style={{ fontWeight: '600' }}>{value}</span>
+                </div>
+              ))}
+              <div style={{ height: '1px', background: C.border, margin: '12px 0' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '15px', fontWeight: '700', color: C.textMain }}>Total</span>
+                <span style={{ fontSize: '22px', fontWeight: '800', color: C.espresso, letterSpacing: '-0.02em' }}>£{(total + 0.5 + total * 0.09).toFixed(2)}</span>
+              </div>
             </div>
           </div>
-        ))}
-        <div style={{ padding: '20px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-            <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>Pickup Time</p>
-            <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '10px', padding: '3px' }}>
-              <button onClick={() => setPickupMode('time')} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: pickupMode === 'time' ? 'white' : 'transparent', color: pickupMode === 'time' ? '#4A3621' : '#888', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', boxShadow: pickupMode === 'time' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Set a time</button>
-              <button onClick={() => navigate('/train')} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: pickupMode === 'train' ? '#4A3621' : 'transparent', color: pickupMode === 'train' ? 'white' : '#888', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>Link my train</button>
-            </div>
+
+          {/* Place order bar */}
+          <div style={{ background: 'white', borderTop: `1px solid ${C.border}`, padding: '16px 16px calc(16px + env(safe-area-inset-bottom, 0px))', boxSizing: 'border-box' }}>
+            {!isOpen() && <p style={{ margin: '0 0 8px', color: '#dc2626', fontSize: '12px', textAlign: 'center', fontWeight: '600' }}>⚠️ Store is currently closed</p>}
+            <button onClick={goToPayment} disabled={cart.length === 0 || !isOpen()} className={cart.length > 0 && isOpen() ? 'browse-btn' : ''} style={{ width: '100%', background: cart.length > 0 && isOpen() ? C.espresso : '#d1c4b8', color: 'white', border: 'none', borderRadius: '16px', padding: '17px', fontSize: '15px', fontWeight: '700', cursor: cart.length > 0 && isOpen() ? 'pointer' : 'not-allowed', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: cart.length > 0 && isOpen() ? '0 3px 12px rgba(44,26,14,0.28)' : 'none', letterSpacing: '0.01em' }}>
+              <span>Place Order</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700' }}>
+                <span>£{(total + 0.5 + total * 0.09).toFixed(2)}</span>
+                <span style={{ fontSize: '18px', opacity: 0.8 }}>→</span>
+              </div>
+            </button>
+            <p style={{ margin: '10px 0 0', textAlign: 'center', fontSize: '11px', color: C.textMuted, fontWeight: '400' }}>By placing your order, you agree to our Terms of Service.</p>
           </div>
-          {pickupMode === 'time' ? (
-            <input type="datetime-local" value={pickupTime} onChange={e => setPickupTime(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', fontSize: '14px', outline: 'none' }} />
-          ) : (
-            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>🚆</span>
-              <span style={{ fontSize: '13px', color: '#166534', fontWeight: '500' }}>Pickup time set to {pickupTime ? new Date(pickupTime + ':00').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''} based on your train</span>
-            </div>
-          )}
-        </div>
-        <div style={{ padding: '0 16px 16px' }}>
-          <input placeholder="Your name *" value={customerName} onChange={e => setCustomerName(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', fontSize: '14px', marginBottom: '10px', outline: 'none' }} />
-          <input placeholder="Phone (optional)" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', fontSize: '14px', outline: 'none' }} />
-        </div>
-        <div style={{ margin: '0 16px 16px', background: 'rgba(74,54,33,0.04)', borderRadius: '14px', padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-          <span style={{ fontSize: '20px', marginTop: '2px' }}>📍</span>
-          <div>
-            <p style={{ margin: 0, fontWeight: 'bold', fontSize: '14px' }}>Pickup Location</p>
-            <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#666' }}>Cramlington Station, Whistlestop Coffee Hut</p>
-          </div>
-        </div>
-        <div style={{ margin: '0 16px', background: '#f8fafc', borderRadius: '14px', padding: '16px' }}>
-          {[['Subtotal', `£${total.toFixed(2)}`], ['Service Fee', '£0.50'], ['Tax', `£${(total * 0.09).toFixed(2)}`]].map(([label, value]) => (
-            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '14px', color: '#666' }}>
-              <span>{label}</span><span style={{ fontWeight: '500' }}>{value}</span>
-            </div>
-          ))}
-          <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-            <span style={{ fontSize: '16px' }}>Total</span>
-            <span style={{ fontSize: '20px', color: '#4A3621' }}>£{(total + 0.5 + total * 0.09).toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
-      <div style={{ background: 'white', borderTop: '1px solid #f1f5f9', padding: '16px 16px 24px', boxSizing: 'border-box' }}>
-        {!isOpen() && <p style={{ margin: '0 0 8px', color: '#ef4444', fontSize: '12px', textAlign: 'center' }}>⚠️ Store is currently closed</p>}
-        <button onClick={goToPayment} disabled={cart.length === 0 || !isOpen()} style={{ width: '100%', background: cart.length > 0 && isOpen() ? '#4A3621' : '#ccc', color: 'white', border: 'none', borderRadius: '14px', padding: '16px', fontSize: '16px', fontWeight: 'bold', cursor: cart.length > 0 && isOpen() ? 'pointer' : 'not-allowed', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Place Order</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span>£{(total + 0.5 + total * 0.09).toFixed(2)}</span>
-            <span>→</span>
-          </div>
-        </button>
-        <p style={{ margin: '10px 0 0', textAlign: 'center', fontSize: '11px', color: '#9ca3af' }}>By placing your order, you agree to our Terms of Service.</p>
-      </div>
+        </>
+      )}
+
+      {/* 底部导航由 App.js CustomerLayout 统一管理 */}
     </div>
   );
 }
@@ -559,27 +683,27 @@ function LoginPage({ onSuccess, onGoRegister, onBack }) {
         .auth-btn:hover { background: #3a2a16 !important; }
         .auth-btn:active { transform: scale(0.98); }
       `}</style>
-      <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", minHeight: '100dvh', display: 'flex', background: '#f7f7f6' }} className="auth-split">
+      <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", minHeight: '100dvh', display: 'flex', background: '#f7f7f6', overflowY: 'auto', position: 'fixed', inset: 0, zIndex: 9999 }} className="auth-split">
 
         {/* LEFT — hero image panel (desktop only) */}
-        <div className="auth-left" style={{ flex: '1 1 50%', position: 'relative', overflow: 'hidden', minHeight: '100dvh' }}>
+        <div className="auth-left" style={{ flex: '0 0 45%', position: 'relative', overflow: 'hidden', minHeight: '100dvh', margin: '40px 20px', alignSelf: 'center', borderRadius: '16px', height: 'calc(100dvh - 80px)', maxHeight: '600px', minHeight: 'unset' }}>
           <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCiqj3OOeh-vdcTt9dIDKAPM6bHb-xmyrNk0w5QkfGEKv30OJa198LomQEDOsAN_ar8eb0bziGYdoTlrgge_GLTRcClzTKo-HL44Nwg836c4XjvV-lmuNw-RY3tR7rq-giF7gj4sPvNZbr3UZUKi5l4pgW-m36uAmkE8a7_OAdCQDOEQ7A3VWTaeRh72Z9VaHBgq_NWqfViP9ckwu-Jh5TkssG7wKGDXf4hpsgEBRd4aV_q30-GudiaY2QjpdRutS1kGnzh6UCc2JQ"
             alt="coffee" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(74,54,33,0.85) 0%, rgba(74,54,33,0.4) 100%)' }} />
-          <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '48px' }}>
+          <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '16px', padding: '24px', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>☕</div>
-              <span style={{ color: 'white', fontWeight: '700', fontSize: '15px', letterSpacing: '0.04em' }}>WHISTLESTOP COFFEE HUT</span>
+              
+              <span style={{ color: 'white', fontWeight: '700', fontSize: '14px', letterSpacing: '0.04em' }}>WHISTLESTOP COFFEE HUT</span>
             </div>
             <div>
-              <h2 style={{ margin: '0 0 12px', fontSize: '40px', fontWeight: '800', color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em' }}>Fresh brews,<br/>every journey.</h2>
-              <p style={{ margin: 0, fontSize: '16px', color: 'rgba(255,255,255,0.8)', lineHeight: 1.6 }}>Order ahead at Cramlington Station<br/>and skip the queue.</p>
+              <h2 style={{ margin: '0 0 12px', fontSize: '36px', fontWeight: '800', color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em', textAlign: 'center' }}>Fresh brews, every journey.</h2>
+              <p style={{ margin: 0, fontSize: '15px', color: 'rgba(255,255,255,0.8)', lineHeight: 1.6, textAlign: 'center' }}>Order ahead at Cramlington Station and skip the queue.</p>
             </div>
           </div>
         </div>
 
         {/* RIGHT — form panel */}
-        <div className="auth-right" style={{ flex: '1 1 50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 40px', overflowY: 'auto' }}>
+        <div className="auth-right" style={{ flex: '1 1 60%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 40px', overflowY: 'auto' }}>
           <div className="auth-card" style={{ width: '100%', maxWidth: '420px', background: 'white', borderRadius: '20px', padding: '40px', boxShadow: '0 8px 40px rgba(0,0,0,0.08)' }}>
 
             {/* Back */}
@@ -674,16 +798,16 @@ function RegisterPage({ onSuccess, onGoLogin, onBack }) {
       <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", minHeight: '100dvh', display: 'flex', background: '#f7f7f6' }} className="reg-split">
 
         {/* LEFT — branding panel */}
-        <div className="reg-left" style={{ flex: '1 1 50%', position: 'relative', overflow: 'hidden', minHeight: '100dvh', background: '#4A3621' }}>
+        <div className="reg-left" style={{ flex: '0 0 45%', position: 'relative', overflow: 'hidden', minHeight: '100dvh', margin: '40px 20px', alignSelf: 'center', borderRadius: '16px', height: 'calc(100dvh - 80px)', maxHeight: '600px', minHeight: 'unset', background: '#4A3621' }}>
           <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLwg1bs2Uv-hJEjU4qErsQ45aCvwXEdK2tX_Fsi8uukBRTFShRbHDtibmWnJgeGW4fVHU6OFRTbFOo-34MFKZuOOgIa_8S9FRUtBO6WvH1hkkDN9pb0ZklHOISR6W5_kVe3wQTTGxpZWc0ZbXxswIYklmm4VihYU2rcZyQQjzmRXskbqVP2cZ_7iPaCC-J3M9_7RmtefkBaZSlrP318gaMNklHo2VgkkAFrGfQuEyF3vysI1x-Bc5PHmdXK8DNxB4L0WllgVuXT1I"
             alt="station" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0, opacity: 0.35 }} />
-          <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '48px' }}>
+          <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '16px', padding: '24px', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>☕</div>
-              <span style={{ color: 'white', fontWeight: '700', fontSize: '15px', letterSpacing: '0.04em' }}>WHISTLESTOP COFFEE HUT</span>
+              
+              <span style={{ color: 'white', fontWeight: '700', fontSize: '14px', letterSpacing: '0.04em' }}>WHISTLESTOP COFFEE HUT</span>
             </div>
             <div>
-              <h2 style={{ margin: '0 0 16px', fontSize: '40px', fontWeight: '800', color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em' }}>Join the club.<br/>Earn rewards.</h2>
+              <h2 style={{ margin: '0 0 16px', fontSize: '36px', fontWeight: '800', color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em' }}>Join the club.<br/>Earn rewards.</h2>
               {[['☕', 'Earn a free drink every 10 orders'], ['⚡', 'Order ahead, skip the queue'], ['🚆', 'Link your train for perfect timing']].map(([icon, text]) => (
                 <div key={text} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
                   <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>{icon}</div>
@@ -695,7 +819,7 @@ function RegisterPage({ onSuccess, onGoLogin, onBack }) {
         </div>
 
         {/* RIGHT — form panel */}
-        <div className="reg-right" style={{ flex: '1 1 50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 40px', overflowY: 'auto' }}>
+        <div className="reg-right" style={{ flex: '1 1 60%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 40px', overflowY: 'auto' }}>
           <div className="reg-card" style={{ width: '100%', maxWidth: '420px', background: 'white', borderRadius: '20px', padding: '40px', boxShadow: '0 8px 40px rgba(0,0,0,0.08)' }}>
 
             {/* Back */}
@@ -758,4 +882,4 @@ function RegisterPage({ onSuccess, onGoLogin, onBack }) {
     </>
   );
 }
->>>>>>> d76aa2c5250caded26e859f44fd20d4b31f47f0b
+export default MenuPage;
