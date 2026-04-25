@@ -32,7 +32,7 @@ function CustomerLayout() {
   // 判断当前高亮项
   const getActive = (item) => {
     if (item.path === '/order-status') return location.pathname === '/order-status';
-    if (item.path === '/loyalty')      return location.pathname === '/loyalty';
+    if (item.path === '/loyalty')      return location.pathname === '/loyalty' || location.pathname.startsWith('/loyalty/');
     if (item.label === 'Menu')         return location.pathname === '/' && location.state?.page === 'menu';
     if (item.label === 'Home')         return location.pathname === '/' && location.state?.page !== 'menu';
     return false;
@@ -50,7 +50,14 @@ function CustomerLayout() {
       {/* 页面内容区：独立滚动，高度 = 全屏 - nav */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
         {/* 统一最大宽度，所有顾客端页面对齐 */}
-        <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
+          width: '100%',
+          boxSizing: 'border-box',
+          paddingLeft: 'max(12px, env(safe-area-inset-left, 0px))',
+          paddingRight: 'max(12px, env(safe-area-inset-right, 0px))',
+        }}>
           <Outlet />
         </div>
       </div>
@@ -65,7 +72,7 @@ function CustomerLayout() {
         paddingBottom: 'env(safe-area-inset-bottom, 12px)',
         minHeight: `${NAV_HEIGHT}px`,
       }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center', height: '100%' }}>
+        <div style={{ maxWidth: '1200px', width: '100%', margin: '0 auto', paddingLeft: '16px', paddingRight: '16px', boxSizing: 'border-box', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center', height: '100%' }}>
         {CUSTOMER_NAV.map((item) => {
           const active = getActive(item);
           return (
@@ -105,6 +112,9 @@ function App() {
           <Route path="/" element={<MenuPage />} />
           <Route path="/order-status" element={<OrderStatus />} />
           <Route path="/loyalty" element={<LoyaltyScheme />} />
+          <Route path="/loyalty/login" element={<LoyaltyScheme />} />
+          <Route path="/loyalty/register" element={<LoyaltyScheme />} />
+          <Route path="/loyalty/profile" element={<LoyaltyScheme />} />
           <Route path="/train" element={<TrainData />} />
         </Route>
 

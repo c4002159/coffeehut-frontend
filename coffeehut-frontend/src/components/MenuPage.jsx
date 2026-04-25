@@ -345,9 +345,15 @@ function MenuPage() {
           <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(250,248,245,0.9)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 10, borderBottom: `1px solid ${C.border}` }}>
             
             <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: C.textMain, letterSpacing: '0.01em' }}>Whistlestop Coffee Hut</h1>
-            <div onClick={() => setAuthPage('login')} className="icon-btn" style={{ width: '36px', height: '36px', borderRadius: '50%', background: member ? C.espresso : C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '16px', border: `1px solid ${C.border}` }}>
+            <button
+              type="button"
+              onClick={() => navigate(member ? '/loyalty/profile' : '/loyalty/register')}
+              className="icon-btn"
+              aria-label={member ? 'Open profile' : 'Join loyalty or sign up'}
+              style={{ width: '36px', height: '36px', borderRadius: '50%', background: member ? C.espresso : C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '16px', border: `1px solid ${C.border}` }}
+            >
               {member ? <span style={{ color: 'white', fontSize: '13px', fontWeight: '700' }}>{member.name?.[0]?.toUpperCase()}</span> : <span style={{ fontSize: '15px' }}>👤</span>}
-            </div>
+            </button>
           </header>
 
           <div>
