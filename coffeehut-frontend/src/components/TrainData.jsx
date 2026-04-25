@@ -157,7 +157,7 @@ function TrainData() {
         </main>
 
         {/* Bottom bar */}
-        <div className="train-bottom-bar" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white', borderTop: '1px solid rgba(74,54,33,0.1)', padding: `14px ${sidePad}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="train-bottom-bar" style={{ position: 'fixed', bottom: 60, left: 0, right: 0, background: 'white', borderTop: '1px solid rgba(74,54,33,0.1)', padding: `14px ${sidePad}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="train-status-text" style={{ fontSize: '14px', color: '#888' }}>
             {selected
               ? `✅ ${trains.find(t => t.trainId === selected)?.origin} → Cramlington · Pickup at ${trains.find(t => t.trainId === selected) ? getPickupTime(trains.find(t => t.trainId === selected)) : ''}`
