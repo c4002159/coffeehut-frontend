@@ -11,13 +11,20 @@ function MenuPage() {
 
   // Re-sync page/cart when location.state changes (e.g. nav clicks or reorder navigation)
   useEffect(() => {
+    const cached = localStorage.getItem("menuItems");
+    if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
     if (location.state?.page) setPage(location.state.page);
     if (location.state?.cartItems) setCart(location.state.cartItems);
   }, [location.state]);
   const [customerPhone, setCustomerPhone] = useState('');
-  const [pickupTime, setPickupTime] = useState('');
+  const getDefaultDate = () => new Date().toISOString().slice(0, 10);
+  const getDefaultPickupTime = () => { const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0); return d.toISOString().slice(0, 16); };
+  const [pickupDate, setPickupDate] = useState(getDefaultDate);
+  const [pickupHour, setPickupHour] = useState(String(new Date().getHours()).padStart(2,"0"));
+  const [pickupMinute, setPickupMinute] = useState(String(Math.ceil(new Date().getMinutes()/5)*5%60).padStart(2,"0"));
+  const [pickupTime, setPickupTime] = useState(getDefaultPickupTime);
   const [pickupMode, setPickupMode] = useState('time');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState(null);
@@ -34,13 +41,17 @@ function MenuPage() {
   });
 
   useEffect(() => {
+    const cached = localStorage.getItem("menuItems");
+    if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
     fetch('http://localhost:8080/api/menu')
       .then(res => res.json())
-      .then(data => { setMenuItems(data); setLoading(false); })
+      .then(data => { setMenuItems(data); setLoading(false); localStorage.setItem("menuItems", JSON.stringify(data)); })
       .catch(() => setLoading(false));
   }, []);
 
   useEffect(() => {
+    const cached = localStorage.getItem("menuItems");
+    if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
     if (location.state?.suggestedPickupTime) {
       setPickupTime(location.state.suggestedPickupTime);
       setPickupMode('train');
@@ -64,10 +75,24 @@ function MenuPage() {
     }).filter(Boolean));
   };
 
+  const setQtyDirect = (id, size, val) => {
+    const n = parseInt(val, 10);
+    if (isNaN(n) || n < 1) return;
+    const capped = Math.min(n, 999);
+    setCart(cart.map(c => c.id === id && c.size === size ? { ...c, quantity: capped } : c));
+  };
   const total = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
-  const isOpen = () => true; // 临时保持开门状态
+  const isOpen = () => {
+    const now = new Date();
+    const day = now.getDay();
+    const hour = now.getHours() + now.getMinutes() / 60;
+    if (day === 0) return false;
+    if (day >= 1 && day <= 5) return hour >= 6.5 && hour < 19;
+    if (day === 6) return hour >= 7 && hour < 18;
+    return false;
+  };
 
   const goToPayment = () => {
     if (!customerName || !pickupTime) {
@@ -107,6 +132,7 @@ function MenuPage() {
   };
 
   const openCustomize = (item) => {
+    if (item.name === "Mineral Water") { addToCart(item, "Regular"); return; }
     setCustomizeItem(item);
     setSelectedSize('Regular');
     setSelectedMilk('Whole Milk');
@@ -126,7 +152,7 @@ function MenuPage() {
   };
 
   // ── LOGIN PAGE ──
-  if (authPage === 'login') {
+  if (authPage === "login") {
     return <LoginPage
       onSuccess={(m) => { localStorage.setItem('member', JSON.stringify(m)); setMember(m); setAuthPage(null); }}
       onGoRegister={() => setAuthPage('register')}
@@ -296,13 +322,6 @@ function MenuPage() {
     <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", background: page === 'cart' ? 'white' : C.cream, minHeight: '100dvh', maxWidth: '100%', margin: '0 auto', position: 'relative' }}>
       <style>{`
         @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
-        .menu-card { animation: fadeSlideUp 0.28s cubic-bezier(0.22,1,0.36,1) both; }
-        .menu-card:nth-child(1) { animation-delay: 0.03s; }
-        .menu-card:nth-child(2) { animation-delay: 0.07s; }
-        .menu-card:nth-child(3) { animation-delay: 0.11s; }
-        .menu-card:nth-child(4) { animation-delay: 0.15s; }
-        .menu-card:nth-child(5) { animation-delay: 0.19s; }
-        .menu-card:nth-child(n+6) { animation-delay: 0.22s; }
         .icon-btn { transition: background 0.15s; }
         .icon-btn:hover { background: rgba(44,26,14,0.07) !important; }
         .size-pill { transition: all 0.15s; }
@@ -324,7 +343,7 @@ function MenuPage() {
         <>
           {/* Header */}
           <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(250,248,245,0.9)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 10, borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ color: C.brown, fontSize: '20px' }}>📍</div>
+            
             <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: C.textMain, letterSpacing: '0.01em' }}>Whistlestop Coffee Hut</h1>
             <div onClick={() => setAuthPage('login')} className="icon-btn" style={{ width: '36px', height: '36px', borderRadius: '50%', background: member ? C.espresso : C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '16px', border: `1px solid ${C.border}` }}>
               {member ? <span style={{ color: 'white', fontSize: '13px', fontWeight: '700' }}>{member.name?.[0]?.toUpperCase()}</span> : <span style={{ fontSize: '15px' }}>👤</span>}
@@ -334,7 +353,7 @@ function MenuPage() {
           <div>
             {/* Member greeting */}
             {member && (
-              <div style={{ padding: '16px 16px 0' }}>
+              <div style={{ padding: '8px 16px 0' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', borderRadius: '16px', background: C.creamDark, border: `1px solid ${C.border}` }}>
                   <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: C.espresso, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '15px', flexShrink: 0 }}>
                     {member.name?.[0]?.toUpperCase()}
@@ -348,7 +367,7 @@ function MenuPage() {
             )}
 
             {/* Hero image */}
-            <div style={{ padding: '16px 16px 0' }}>
+            <div style={{ padding: '8px 16px 0' }}>
               <div style={{ borderRadius: '20px', overflow: 'hidden', position: 'relative', height: '190px', boxShadow: '0 4px 24px rgba(44,26,14,0.15)' }}>
                 <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLwg1bs2Uv-hJEjU4qErsQ45aCvwXEdK2tX_Fsi8uukBRTFShRbHDtibmWnJgeGW4fVHU6OFRTbFOo-34MFKZuOOgIa_8S9FRUtBO6WvH1hkkDN9pb0ZklHOISR6W5_kVe3wQTTGxpZWc0ZbXxswIYklmm4VihYU2rcZyQQjzmRXskbqVP2cZ_7iPaCC-J3M9_7RmtefkBaZSlrP318gaMNklHo2VgkkAFrGfQuEyF3vysI1x-Bc5PHmdXK8DNxB4L0WllgVuXT1I"
                   alt="cafe" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -362,7 +381,7 @@ function MenuPage() {
             </div>
 
             {/* Hours card */}
-            <div style={{ padding: '14px 16px 0' }}>
+            <div style={{ padding: '8px 16px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderRadius: '16px', border: `1px solid ${C.border}`, background: 'white', boxShadow: '0 1px 4px rgba(44,26,14,0.05)' }}>
                 <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>🕐</div>
                 <div>
@@ -383,22 +402,22 @@ function MenuPage() {
             </div>
 
             {/* Browse button */}
-            <div style={{ padding: '14px 16px 0' }}>
+            <div style={{ padding: '8px 16px 0' }}>
               <button onClick={() => setPage('menu')} className="browse-btn" style={{ width: '100%', background: C.espresso, color: 'white', border: 'none', borderRadius: '16px', padding: '17px', fontSize: '15px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 3px 12px rgba(44,26,14,0.28)', letterSpacing: '0.01em' }}>
                 ☕ Browse Menu
               </button>
             </div>
 
             {/* Popular drinks */}
-            <div style={{ padding: '24px 16px 0' }}>
+            <div style={{ padding: '12px 16px 0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: C.textMain, letterSpacing: '-0.01em' }}>Popular Drinks</h3>
                 <span onClick={() => setPage('menu')} style={{ fontSize: '13px', color: C.brown, fontWeight: '600', cursor: 'pointer', padding: '4px 0' }}>View all →</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 16px))' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', paddingBottom: '16px' }}>
                 {popularItems.map(item => (
                   <div key={item.id} className="pop-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'white', borderRadius: '18px', overflow: 'hidden', border: `1px solid ${C.border}`, boxShadow: '0 2px 8px rgba(44,26,14,0.06)', cursor: 'pointer' }} onClick={() => openCustomize(item)}>
-                    <div style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden' }}>
+                    <div style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', maxHeight: '220px' }}>
                       {getImage(item.name)
                         ? <img src={getImage(item.name)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         : <div style={{ width: '100%', height: '100%', background: C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px' }}>☕</div>
@@ -422,8 +441,8 @@ function MenuPage() {
         <>
           <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(250,248,245,0.9)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 10, borderBottom: `1px solid ${C.border}` }}>
             <div onClick={() => { setPage('home'); setSearchOpen(false); setSearchQuery(''); }} className="icon-btn" style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '18px', color: C.brown, background: C.creamDark }}>←</div>
-            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: C.textMain, letterSpacing: '0.01em' }}>Menu</h2>
-            <div onClick={() => setSearchOpen(o => !o)} className="icon-btn" style={{ width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '17px', color: searchOpen ? 'white' : C.brown, background: searchOpen ? C.espresso : C.creamDark, borderRadius: '50%', transition: 'background 0.2s, color 0.2s' }}>🔍</div>
+            
+            
           </header>
 
           {searchOpen && (
@@ -459,7 +478,7 @@ function MenuPage() {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(400px, 100%), 1fr))', gap: '10px', padding: '8px 16px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 16px))' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '10px', padding: '8px 16px', paddingBottom: '16px' }}>
             {filteredMenuItems.map(item => (
               <div key={item.id} className="menu-card" style={{ overflow: 'hidden', borderRadius: '16px', padding: '14px', background: 'white', boxShadow: '0 1px 3px rgba(44,26,14,0.06), 0 4px 12px rgba(44,26,14,0.04)', border: `1px solid ${C.border}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -509,7 +528,7 @@ function MenuPage() {
             <h2 style={{ margin: 0, flex: 1, textAlign: 'center', fontSize: '15px', fontWeight: '700', color: C.textMain, paddingRight: '36px', letterSpacing: '0.01em' }}>Order Review</h2>
           </header>
 
-          <div style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 16px))' }}>
+          <div style={{ paddingBottom: '16px' }}>
             <div style={{ padding: '20px 16px 10px' }}>
               <h3 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Selected Drinks</h3>
             </div>
@@ -539,7 +558,7 @@ function MenuPage() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                   <button onClick={() => updateQty(item.id, item.size, -1)} className="qty-btn" style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: C.creamDark, cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.brown, fontWeight: '700' }}>−</button>
-                  <span style={{ fontWeight: '700', minWidth: '20px', textAlign: 'center', fontSize: '15px', color: C.textMain }}>{item.quantity}</span>
+                  <input type="number" min="1" max="999" value={item.quantity} onChange={e => setQtyDirect(item.id, item.size, e.target.value)} onKeyDown={e => { if (["e","E","+","-","."].includes(e.key)) e.preventDefault(); }} style={{ width: "48px", textAlign: "center", fontWeight: "700", fontSize: "15px", color: C.textMain, border: "1.5px solid #e2e8f0", borderRadius: "8px", padding: "4px 0", outline: "none", background: "white" }} />
                   <button onClick={() => updateQty(item.id, item.size, 1)} className="qty-btn" style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: C.creamDark, cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.brown, fontWeight: '700' }}>+</button>
                 </div>
               </div>
@@ -555,8 +574,23 @@ function MenuPage() {
                 </div>
               </div>
               {pickupMode === 'time' ? (
-                <input type="datetime-local" value={pickupTime} onChange={e => setPickupTime(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", background: 'white', color: C.textMain }} />
-              ) : (
+<div style={{display:"flex",gap:"10px",flexDirection:"column"}}>
+  <input type="date" value={pickupDate} min={new Date().toISOString().slice(0,10)} 
+    onChange={e=>{setPickupDate(e.target.value);setPickupTime(e.target.value+"T"+pickupHour+":"+pickupMinute);}} 
+    style={{width:"100%",boxSizing:"border-box",border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}/>
+  <div style={{display:"flex",gap:"10px",marginBottom:"4px"}}>
+  <span style={{flex:1,fontSize:"13px",fontWeight:"700",color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em"}}>HOUR</span>
+  <span style={{flex:1,fontSize:"13px",fontWeight:"700",color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em"}}>MINUTE</span>
+</div>
+  <div style={{display:"flex",gap:"10px"}}>
+    <select value={pickupHour} onChange={e=>{setPickupHour(e.target.value);setPickupTime(pickupDate+"T"+e.target.value+":"+pickupMinute);}} 
+      style={{flex:1,border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}>
+{Array.from({length:24},(_,i)=>String(i).padStart(2,"0")).map(h=><option key={h} value={h}>{h}</option>)}    </select>
+    <select value={pickupMinute} onChange={e=>{setPickupMinute(e.target.value);setPickupTime(pickupDate+"T"+pickupHour+":"+e.target.value);}} 
+      style={{flex:1,border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}>
+{["00","05","10","15","20","25","30","35","40","45","50","55"].map(m=><option key={m} value={m}>{m}</option>)}    </select>
+  </div>
+</div>              ) : (
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>🚆</span>
                   <span style={{ fontSize: '13px', color: '#166534', fontWeight: '600' }}>Pickup time set to {pickupTime ? new Date(pickupTime + ':00').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''} based on your train</span>
@@ -565,7 +599,8 @@ function MenuPage() {
             </div>
 
             {/* Name / Phone */}
-            <div style={{ padding: '16px 16px 0' }}>
+            <div style={{ padding: '8px 16px 0' }}>
+              <p style={{ margin: "0 0 10px", fontSize: "13px", fontWeight: "700", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Personal Information</p>
               <input placeholder="Your name *" value={customerName} onChange={e => setCustomerName(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', marginBottom: '10px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white' }} />
               <input placeholder="Phone (optional)" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white' }} />
             </div>
@@ -648,27 +683,27 @@ function LoginPage({ onSuccess, onGoRegister, onBack }) {
         .auth-btn:hover { background: #3a2a16 !important; }
         .auth-btn:active { transform: scale(0.98); }
       `}</style>
-      <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", minHeight: '100dvh', display: 'flex', background: '#f7f7f6' }} className="auth-split">
+      <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", minHeight: '100dvh', display: 'flex', background: '#f7f7f6', overflowY: 'auto', position: 'fixed', inset: 0, zIndex: 9999 }} className="auth-split">
 
         {/* LEFT — hero image panel (desktop only) */}
-        <div className="auth-left" style={{ flex: '1 1 50%', position: 'relative', overflow: 'hidden', minHeight: '100dvh' }}>
+        <div className="auth-left" style={{ flex: '0 0 45%', position: 'relative', overflow: 'hidden', minHeight: '100dvh', margin: '40px 20px', alignSelf: 'center', borderRadius: '16px', height: 'calc(100dvh - 80px)', maxHeight: '600px', minHeight: 'unset' }}>
           <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCiqj3OOeh-vdcTt9dIDKAPM6bHb-xmyrNk0w5QkfGEKv30OJa198LomQEDOsAN_ar8eb0bziGYdoTlrgge_GLTRcClzTKo-HL44Nwg836c4XjvV-lmuNw-RY3tR7rq-giF7gj4sPvNZbr3UZUKi5l4pgW-m36uAmkE8a7_OAdCQDOEQ7A3VWTaeRh72Z9VaHBgq_NWqfViP9ckwu-Jh5TkssG7wKGDXf4hpsgEBRd4aV_q30-GudiaY2QjpdRutS1kGnzh6UCc2JQ"
             alt="coffee" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(74,54,33,0.85) 0%, rgba(74,54,33,0.4) 100%)' }} />
-          <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '48px' }}>
+          <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '16px', padding: '24px', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>☕</div>
-              <span style={{ color: 'white', fontWeight: '700', fontSize: '15px', letterSpacing: '0.04em' }}>WHISTLESTOP COFFEE HUT</span>
+              
+              <span style={{ color: 'white', fontWeight: '700', fontSize: '14px', letterSpacing: '0.04em' }}>WHISTLESTOP COFFEE HUT</span>
             </div>
             <div>
-              <h2 style={{ margin: '0 0 12px', fontSize: '40px', fontWeight: '800', color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em' }}>Fresh brews,<br/>every journey.</h2>
-              <p style={{ margin: 0, fontSize: '16px', color: 'rgba(255,255,255,0.8)', lineHeight: 1.6 }}>Order ahead at Cramlington Station<br/>and skip the queue.</p>
+              <h2 style={{ margin: '0 0 12px', fontSize: '36px', fontWeight: '800', color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em', textAlign: 'center' }}>Fresh brews, every journey.</h2>
+              <p style={{ margin: 0, fontSize: '15px', color: 'rgba(255,255,255,0.8)', lineHeight: 1.6, textAlign: 'center' }}>Order ahead at Cramlington Station and skip the queue.</p>
             </div>
           </div>
         </div>
 
         {/* RIGHT — form panel */}
-        <div className="auth-right" style={{ flex: '1 1 50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 40px', overflowY: 'auto' }}>
+        <div className="auth-right" style={{ flex: '1 1 60%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 40px', overflowY: 'auto' }}>
           <div className="auth-card" style={{ width: '100%', maxWidth: '420px', background: 'white', borderRadius: '20px', padding: '40px', boxShadow: '0 8px 40px rgba(0,0,0,0.08)' }}>
 
             {/* Back */}
@@ -763,16 +798,16 @@ function RegisterPage({ onSuccess, onGoLogin, onBack }) {
       <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", minHeight: '100dvh', display: 'flex', background: '#f7f7f6' }} className="reg-split">
 
         {/* LEFT — branding panel */}
-        <div className="reg-left" style={{ flex: '1 1 50%', position: 'relative', overflow: 'hidden', minHeight: '100dvh', background: '#4A3621' }}>
+        <div className="reg-left" style={{ flex: '0 0 45%', position: 'relative', overflow: 'hidden', minHeight: '100dvh', margin: '40px 20px', alignSelf: 'center', borderRadius: '16px', height: 'calc(100dvh - 80px)', maxHeight: '600px', minHeight: 'unset', background: '#4A3621' }}>
           <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLwg1bs2Uv-hJEjU4qErsQ45aCvwXEdK2tX_Fsi8uukBRTFShRbHDtibmWnJgeGW4fVHU6OFRTbFOo-34MFKZuOOgIa_8S9FRUtBO6WvH1hkkDN9pb0ZklHOISR6W5_kVe3wQTTGxpZWc0ZbXxswIYklmm4VihYU2rcZyQQjzmRXskbqVP2cZ_7iPaCC-J3M9_7RmtefkBaZSlrP318gaMNklHo2VgkkAFrGfQuEyF3vysI1x-Bc5PHmdXK8DNxB4L0WllgVuXT1I"
             alt="station" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0, opacity: 0.35 }} />
-          <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '48px' }}>
+          <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '16px', padding: '24px', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>☕</div>
-              <span style={{ color: 'white', fontWeight: '700', fontSize: '15px', letterSpacing: '0.04em' }}>WHISTLESTOP COFFEE HUT</span>
+              
+              <span style={{ color: 'white', fontWeight: '700', fontSize: '14px', letterSpacing: '0.04em' }}>WHISTLESTOP COFFEE HUT</span>
             </div>
             <div>
-              <h2 style={{ margin: '0 0 16px', fontSize: '40px', fontWeight: '800', color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em' }}>Join the club.<br/>Earn rewards.</h2>
+              <h2 style={{ margin: '0 0 16px', fontSize: '36px', fontWeight: '800', color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em' }}>Join the club.<br/>Earn rewards.</h2>
               {[['☕', 'Earn a free drink every 10 orders'], ['⚡', 'Order ahead, skip the queue'], ['🚆', 'Link your train for perfect timing']].map(([icon, text]) => (
                 <div key={text} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
                   <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>{icon}</div>
@@ -784,7 +819,7 @@ function RegisterPage({ onSuccess, onGoLogin, onBack }) {
         </div>
 
         {/* RIGHT — form panel */}
-        <div className="reg-right" style={{ flex: '1 1 50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 40px', overflowY: 'auto' }}>
+        <div className="reg-right" style={{ flex: '1 1 60%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 40px', overflowY: 'auto' }}>
           <div className="reg-card" style={{ width: '100%', maxWidth: '420px', background: 'white', borderRadius: '20px', padding: '40px', boxShadow: '0 8px 40px rgba(0,0,0,0.08)' }}>
 
             {/* Back */}
