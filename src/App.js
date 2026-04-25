@@ -50,7 +50,7 @@ function CustomerLayout() {
       {/* 页面内容区：独立滚动，高度 = 全屏 - nav */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
         {/* 统一最大宽度，所有顾客端页面对齐 */}
-        <div style={{ maxWidth: '680px', margin: '0 auto', width: '100%' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
           <Outlet />
         </div>
       </div>
@@ -65,14 +65,14 @@ function CustomerLayout() {
         paddingBottom: 'env(safe-area-inset-bottom, 12px)',
         minHeight: `${NAV_HEIGHT}px`,
       }}>
-        <div style={{ maxWidth: '680px', margin: '0 auto', display: 'flex', justifyContent: 'space-around', alignItems: 'center', height: '100%' }}>
+        <div style={{ maxWidth: '100%', margin: '0 auto', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center', height: '100%' }}>
         {CUSTOMER_NAV.map((item) => {
           const active = getActive(item);
           return (
             <div
               key={item.label}
               onClick={() => navigate(item.path, item.state ? { state: item.state } : undefined)}
-              style={{ textAlign: 'center', cursor: 'pointer', padding: '4px 16px', borderRadius: '12px', transition: 'background 0.15s', color: active ? '#2C1A0E' : '#B0A090' }}
+              style={{ textAlign: 'center', cursor: 'pointer', padding: '4px 0', flex: 1, borderRadius: '12px', transition: 'background 0.15s', color: active ? '#2C1A0E' : '#B0A090' }}
             >
               <div style={{ fontSize: '20px', lineHeight: 1 }}>{item.icon}</div>
               <p style={{ margin: '4px 0 0', fontSize: '10px', fontWeight: active ? '700' : '500', letterSpacing: '0.02em' }}>{item.label}</p>
