@@ -1,7 +1,13 @@
 .payment-page {
-  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
   background: linear-gradient(180deg, #faf7f2 0%, #f0ebe3 100%);
-  padding: 1.25rem 1rem 2rem;
+  padding: max(1.25rem, env(safe-area-inset-top))
+    max(1rem, env(safe-area-inset-right))
+    max(2rem, env(safe-area-inset-bottom))
+    max(1rem, env(safe-area-inset-left));
   box-sizing: border-box;
 }
 
@@ -54,9 +60,21 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: 0.75rem;
   padding: 0.35rem 0;
   font-size: 0.95rem;
   color: #3d2c1f;
+}
+
+.payment-row > span:first-child {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.payment-row > span:last-child {
+  flex-shrink: 0;
+  text-align: right;
 }
 
 .payment-row-muted {

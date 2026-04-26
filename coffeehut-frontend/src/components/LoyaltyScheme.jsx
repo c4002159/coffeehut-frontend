@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import './LoyaltyScheme.css';
 
 function readMember() {
@@ -14,10 +14,20 @@ function readMember() {
   }
 }
 
-export default function LoyaltyScheme({ initialView = 'landing' }) {
+function pathToGuestView(pathname) {
+  if (pathname.startsWith('/loyalty/register')) return 'register';
+  if (pathname.startsWith('/loyalty/login')) return 'login';
+  if (pathname.startsWith('/loyalty/profile')) return 'profile';
+  return 'landing';
+}
+
+export default function LoyaltyScheme() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [member, setMember] = useState(() => readMember());
-  const [view, setView] = useState(initialView);
+  const [guestTab, setGuestTab] = useState(() =>
+    location.pathname.startsWith('/loyalty/register') ? 'register' : 'login'
+  );
   const [orderStatusOn, setOrderStatusOn] = useState(true);
   const [readyOn, setReadyOn] = useState(true);
   const [promosOn, setPromosOn] = useState(false);
@@ -28,6 +38,8 @@ export default function LoyaltyScheme({ initialView = 'landing' }) {
     password: '',
   });
 
+  const guestView = pathToGuestView(location.pathname);
+
   useEffect(() => {
     const onStorage = () => setMember(readMember());
     window.addEventListener('storage', onStorage);
@@ -35,8 +47,9 @@ export default function LoyaltyScheme({ initialView = 'landing' }) {
   }, []);
 
   useEffect(() => {
-    setView(initialView);
-  }, [initialView]);
+    if (location.pathname.startsWith('/loyalty/register')) setGuestTab('register');
+    else if (location.pathname.startsWith('/loyalty/login')) setGuestTab('login');
+  }, [location.pathname]);
 
   const totalOrders = useMemo(() => {
     const n = Number(member?.totalOrders);
@@ -65,10 +78,9 @@ export default function LoyaltyScheme({ initialView = 'landing' }) {
   }, [nextOrderFree, stamps]);
 
   const handleLogout = useCallback(() => {
-    localStorage.clear();
+    localStorage.removeItem('member');
     setMember(null);
-    setView('landing');
-    navigate('/');
+    navigate('/loyalty');
   }, [navigate]);
 
   const saveMember = useCallback((nextMember) => {
@@ -79,15 +91,14 @@ export default function LoyaltyScheme({ initialView = 'landing' }) {
   const handleLogin = useCallback(
     (e) => {
       e.preventDefault();
-      const email = loginForm.email.trim();
-      if (!email) return;
+      const em = loginForm.email.trim();
+      if (!em) return;
       const nextMember = {
-        name: email.split('@')[0] || 'Member',
-        email,
+        name: em.split('@')[0] || 'Member',
+        email: em,
         totalOrders: member?.totalOrders ?? 0,
       };
       saveMember(nextMember);
-      setView('profile');
       navigate('/loyalty/profile');
     },
     [loginForm.email, member?.totalOrders, navigate, saveMember]
@@ -97,133 +108,240 @@ export default function LoyaltyScheme({ initialView = 'landing' }) {
     (e) => {
       e.preventDefault();
       const name = registerForm.name.trim() || 'Member';
-      const email = registerForm.email.trim();
-      if (!email) return;
-      const nextMember = { name, email, totalOrders: 0 };
+      const em = registerForm.email.trim();
+      if (!em) return;
+      const nextMember = { name, email: em, totalOrders: 0 };
       saveMember(nextMember);
-      setView('profile');
       navigate('/loyalty/profile');
     },
     [navigate, registerForm.email, registerForm.name, saveMember]
   );
 
-  if (!member && view === 'landing') {
+  const setAuthTab = (tab) => {
+    setGuestTab(tab);
+    if (tab === 'register') navigate('/loyalty/register');
+    else if (tab === 'login') navigate('/loyalty/login');
+    else navigate('/loyalty/login');
+  };
+
+  if (member && (guestView === 'login' || guestView === 'register')) {
+    return <Navigate to="/loyalty/profile" replace />;
+  }
+
+  if (!member && guestView === 'profile') {
+    return <Navigate to="/loyalty/login" replace />;
+  }
+
+  if (!member && guestView === 'landing') {
     return (
-      <div className="loyalty-page">
-        <section className="loyalty-hero">
-          <h1 className="loyalty-brand">Whistlestop</h1>
-          <div className="loyalty-promo">Collect 9 orders and get your next one free</div>
-          <button
-            type="button"
-            className="loyalty-cta primary"
-            onClick={() => {
-              setView('register');
-              navigate('/loyalty/register');
-            }}
-          >
-            Join Loyalty
-          </button>
-          <button
-            type="button"
-            className="loyalty-cta"
-            onClick={() => {
-              setView('login');
-              navigate('/loyalty/login');
-            }}
-          >
-            Login
-          </button>
+      <div className="loyalty-page loyalty-landing">
+        <h1 className="loyalty-brand-title">Whistlestop</h1>
+        <section className="loyalty-hero-card" aria-label="Loyalty promotion">
+          <div className="loyalty-hero-card-bg" />
+          <div className="loyalty-hero-card-overlay">
+            <p className="loyalty-hero-kicker">The morning ritual</p>
+            <p className="loyalty-hero-line">Collect 9 orders and get your next one free</p>
+          </div>
         </section>
+        <button
+          type="button"
+          className="loyalty-cta loyalty-cta-primary"
+          onClick={() => navigate('/loyalty/register')}
+        >
+          Join Loyalty
+        </button>
+        <button
+          type="button"
+          className="loyalty-cta loyalty-cta-outline"
+          onClick={() => navigate('/loyalty/login')}
+        >
+          Login
+        </button>
       </div>
     );
   }
 
-  if (!member && view === 'login') {
-    return (
-      <div className="loyalty-page">
-        <header className="loyalty-header">
-          <button type="button" className="loyalty-back" onClick={() => navigate('/loyalty')}>
-            Back
-          </button>
-          <h1 className="loyalty-title">Welcome Back</h1>
-        </header>
-        <form className="loyalty-form-card" onSubmit={handleLogin}>
-          <label className="loyalty-label" htmlFor="login-email">Email</label>
-          <input
-            id="login-email"
-            className="loyalty-input"
-            type="email"
-            required
-            value={loginForm.email}
-            onChange={(e) => setLoginForm((v) => ({ ...v, email: e.target.value }))}
-          />
-          <label className="loyalty-label" htmlFor="login-password">Password</label>
-          <input
-            id="login-password"
-            className="loyalty-input"
-            type="password"
-            required
-            value={loginForm.password}
-            onChange={(e) => setLoginForm((v) => ({ ...v, password: e.target.value }))}
-          />
-          <button type="submit" className="loyalty-cta primary">Sign in</button>
-          <p className="loyalty-switch">
-            New customer?{' '}
-            <button
-              type="button"
-              className="loyalty-link-btn"
-              onClick={() => {
-                setView('register');
-                navigate('/loyalty/register');
-              }}
-            >
-              Create an account
-            </button>
-          </p>
-        </form>
-      </div>
-    );
-  }
+  if (!member && (guestView === 'login' || guestView === 'register')) {
+    const tab = guestTab === 'profile' ? 'profile' : guestView === 'register' ? 'register' : 'login';
 
-  if (!member && view === 'register') {
     return (
-      <div className="loyalty-page">
-        <header className="loyalty-header">
-          <button type="button" className="loyalty-back" onClick={() => navigate('/')}>
-            Back
-          </button>
-          <h1 className="loyalty-title">Create Account</h1>
-        </header>
-        <form className="loyalty-form-card" onSubmit={handleRegister}>
-          <label className="loyalty-label" htmlFor="register-name">Name</label>
-          <input
-            id="register-name"
-            className="loyalty-input"
-            type="text"
-            required
-            value={registerForm.name}
-            onChange={(e) => setRegisterForm((v) => ({ ...v, name: e.target.value }))}
-          />
-          <label className="loyalty-label" htmlFor="register-email">Email</label>
-          <input
-            id="register-email"
-            className="loyalty-input"
-            type="email"
-            required
-            value={registerForm.email}
-            onChange={(e) => setRegisterForm((v) => ({ ...v, email: e.target.value }))}
-          />
-          <label className="loyalty-label" htmlFor="register-password">Password</label>
-          <input
-            id="register-password"
-            className="loyalty-input"
-            type="password"
-            required
-            value={registerForm.password}
-            onChange={(e) => setRegisterForm((v) => ({ ...v, password: e.target.value }))}
-          />
-          <button type="submit" className="loyalty-cta primary">Create account</button>
-        </form>
+      <div className="loyalty-page loyalty-auth-page">
+        <div className="loyalty-auth-split">
+          <aside className="loyalty-auth-visual" aria-hidden>
+            <div className="loyalty-auth-visual-bg" />
+            <div className="loyalty-auth-visual-copy">
+              <span className="loyalty-auth-visual-brand">Whistlestop</span>
+              <p className="loyalty-auth-visual-tagline">Fresh brews, every journey.</p>
+            </div>
+          </aside>
+
+          <div className="loyalty-auth-panel">
+            <div className="loyalty-auth-brand-row">
+              <span className="loyalty-cup-mark" aria-hidden>
+                ☕
+              </span>
+              <div>
+                <div className="loyalty-auth-brand-name">Whistlestop Loyalty</div>
+                <div className="loyalty-auth-brand-sub">Coffee rewards for regular customers</div>
+              </div>
+            </div>
+
+            <div className="loyalty-scheme-banner">
+              <span className="loyalty-scheme-label">Loyalty scheme</span>
+              <span className="loyalty-scheme-text">Collect 9 orders and get your next one free.</span>
+            </div>
+
+            <div className="loyalty-tabs" role="tablist" aria-label="Account">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'login'}
+                className={`loyalty-tab${tab === 'login' ? ' loyalty-tab-active' : ''}`}
+                onClick={() => setAuthTab('login')}
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'register'}
+                className={`loyalty-tab${tab === 'register' ? ' loyalty-tab-active' : ''}`}
+                onClick={() => setAuthTab('register')}
+              >
+                Register
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'profile'}
+                className={`loyalty-tab${tab === 'profile' ? ' loyalty-tab-active' : ''}`}
+                onClick={() => setGuestTab('profile')}
+              >
+                Profile
+              </button>
+            </div>
+
+            {tab === 'profile' && (
+              <div className="loyalty-profile-placeholder">
+                <p>Sign in to see your stamps, rewards, and saved preferences.</p>
+                <button type="button" className="loyalty-cta loyalty-cta-primary" onClick={() => setAuthTab('login')}>
+                  Go to Login
+                </button>
+              </div>
+            )}
+
+            {tab === 'login' && (
+              <form className="loyalty-form-block" onSubmit={handleLogin}>
+                <h2 className="loyalty-welcome-back">Welcome back</h2>
+                <label className="loyalty-label" htmlFor="login-email">
+                  Email address
+                </label>
+                <input
+                  id="login-email"
+                  className="loyalty-input"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  required
+                  value={loginForm.email}
+                  onChange={(e) => setLoginForm((v) => ({ ...v, email: e.target.value }))}
+                />
+                <label className="loyalty-label" htmlFor="login-password">
+                  Password
+                </label>
+                <input
+                  id="login-password"
+                  className="loyalty-input"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  required
+                  value={loginForm.password}
+                  onChange={(e) => setLoginForm((v) => ({ ...v, password: e.target.value }))}
+                />
+                <button type="button" className="loyalty-forgot" onClick={() => window.alert('Password reset would open here.')}>
+                  Forgot password?
+                </button>
+                <button type="submit" className="loyalty-cta loyalty-cta-primary loyalty-cta-submit">
+                  Sign In
+                </button>
+                <p className="loyalty-switch">
+                  New customer?{' '}
+                  <button type="button" className="loyalty-link-btn" onClick={() => setAuthTab('register')}>
+                    Create an account
+                  </button>
+                </p>
+              </form>
+            )}
+
+            {tab === 'register' && (
+              <form className="loyalty-form-block" onSubmit={handleRegister}>
+                <h2 className="loyalty-welcome-back">Create your account</h2>
+                <label className="loyalty-label" htmlFor="register-name">
+                  Name
+                </label>
+                <input
+                  id="register-name"
+                  className="loyalty-input"
+                  type="text"
+                  autoComplete="name"
+                  placeholder="Alex Thompson"
+                  required
+                  value={registerForm.name}
+                  onChange={(e) => setRegisterForm((v) => ({ ...v, name: e.target.value }))}
+                />
+                <label className="loyalty-label" htmlFor="register-email">
+                  Email address
+                </label>
+                <input
+                  id="register-email"
+                  className="loyalty-input"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  required
+                  value={registerForm.email}
+                  onChange={(e) => setRegisterForm((v) => ({ ...v, email: e.target.value }))}
+                />
+                <label className="loyalty-label" htmlFor="register-password">
+                  Password
+                </label>
+                <input
+                  id="register-password"
+                  className="loyalty-input"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                  required
+                  value={registerForm.password}
+                  onChange={(e) => setRegisterForm((v) => ({ ...v, password: e.target.value }))}
+                />
+                <button type="submit" className="loyalty-cta loyalty-cta-primary loyalty-cta-submit">
+                  Create account
+                </button>
+                <p className="loyalty-switch loyalty-switch-center">
+                  Already have an account?{' '}
+                  <button type="button" className="loyalty-link-btn" onClick={() => setAuthTab('login')}>
+                    Sign in
+                  </button>
+                </p>
+              </form>
+            )}
+
+            <div className="loyalty-auth-footer-actions">
+              <button type="button" className="loyalty-cta loyalty-cta-outline loyalty-cta-half" onClick={() => navigate('/loyalty')}>
+                Back
+              </button>
+              <button
+                type="button"
+                className="loyalty-cta loyalty-cta-primary loyalty-cta-half"
+                onClick={() => navigate('/', { state: { page: 'menu' } })}
+              >
+                Go to Menu
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -233,7 +351,7 @@ export default function LoyaltyScheme({ initialView = 'landing' }) {
       <div className="loyalty-page">
         <div className="loyalty-guest">
           <p>You are not signed in.</p>
-          <button type="button" className="loyalty-cta primary" onClick={() => navigate('/loyalty')}>
+          <button type="button" className="loyalty-cta loyalty-cta-primary" onClick={() => navigate('/loyalty')}>
             Return to loyalty
           </button>
         </div>
@@ -242,111 +360,113 @@ export default function LoyaltyScheme({ initialView = 'landing' }) {
   }
 
   return (
-    <div className="loyalty-page">
-      <header className="loyalty-header">
-        <button
-          type="button"
-          className="loyalty-back"
-          onClick={() => navigate(-1)}
-        >
-          Back
-        </button>
-        <h1 className="loyalty-title">Profile</h1>
-      </header>
+    <div className="loyalty-page loyalty-profile-page">
+      <div className="loyalty-profile-shell">
+        <header className="loyalty-header loyalty-header-centered">
+          <button type="button" className="loyalty-back loyalty-back-icon" onClick={() => navigate(-1)} aria-label="Back">
+            ←
+          </button>
+          <h1 className="loyalty-title">Profile</h1>
+        </header>
 
-      <section className="loyalty-profile">
-        <div className="loyalty-avatar" aria-hidden>
-          {initial}
-        </div>
-        <h2 className="loyalty-name">{displayName}</h2>
-        {email ? <p className="loyalty-email">{email}</p> : null}
-      </section>
+        <div className="loyalty-profile-layout">
+          <aside className="loyalty-profile-aside">
+            <section className="loyalty-profile">
+              <div className="loyalty-avatar" aria-hidden>
+                {initial}
+              </div>
+              <h2 className="loyalty-name">{displayName}</h2>
+              {email ? <p className="loyalty-email">{email}</p> : null}
+            </section>
+          </aside>
 
-      <section className="loyalty-section" aria-label="Loyalty rewards">
-        <div className="loyalty-stamp-head">
-          <h2 style={{ margin: 0 }}>Loyalty rewards</h2>
-          <span className="loyalty-stamp-count">
-            {stamps}/9
-          </span>
-        </div>
-        {nextOrderFree ? (
-          <p className="loyalty-stamp-hint free">Next order is FREE!</p>
-        ) : (
-          <p className="loyalty-stamp-hint">{stampHint}</p>
-        )}
-        <div className="loyalty-cups" role="list">
-          {Array.from({ length: 9 }, (_, i) => (
-            <div
-              key={i}
-              role="listitem"
-              className={`loyalty-cup${i < stamps ? ' filled' : ''}`}
-              aria-label={i < stamps ? 'Stamp earned' : 'Empty stamp'}
-            >
-              {i < stamps ? '☕' : '○'}
+          <div className="loyalty-profile-stack">
+            <section className="loyalty-section loyalty-section-rewards" aria-label="Loyalty rewards">
+              <div className="loyalty-stamp-head">
+                <h2 className="loyalty-section-title-inline">Loyalty Rewards</h2>
+                <span className="loyalty-stamp-count">
+                  {stamps}/9
+                </span>
+              </div>
+              {nextOrderFree ? (
+                <p className="loyalty-stamp-hint free">Next order is FREE!</p>
+              ) : (
+                <p className="loyalty-stamp-hint">{stampHint}</p>
+              )}
+              <div className="loyalty-cups" role="list">
+                {Array.from({ length: 9 }, (_, i) => (
+                  <div
+                    key={i}
+                    role="listitem"
+                    className={`loyalty-cup${i < stamps ? ' filled' : ''}`}
+                    aria-label={i < stamps ? 'Stamp earned' : 'Empty stamp'}
+                  >
+                    {i < stamps ? '☕' : '○'}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div className="loyalty-profile-columns">
+              <section className="loyalty-section" aria-label="Payment methods">
+                <h2 className="loyalty-section-heading">Payment methods</h2>
+                <button
+                  type="button"
+                  className="loyalty-row loyalty-row-chevron"
+                  onClick={() => window.alert('Payment management would open here.')}
+                >
+                  Visa ending in **** 4242
+                </button>
+                <button
+                  type="button"
+                  className="loyalty-row loyalty-row-chevron"
+                  onClick={() => window.alert('Payment management would open here.')}
+                >
+                  Apple Pay
+                </button>
+              </section>
+
+              <section className="loyalty-section" aria-label="Notifications">
+                <h2 className="loyalty-section-heading">Notifications</h2>
+                <div className="loyalty-row loyalty-toggle-row">
+                  <span>Order Status Updates</span>
+                  <button
+                    type="button"
+                    className={`loyalty-toggle${orderStatusOn ? ' on' : ''}`}
+                    onClick={() => setOrderStatusOn((v) => !v)}
+                    aria-pressed={orderStatusOn}
+                    aria-label="Order status updates"
+                  />
+                </div>
+                <div className="loyalty-row loyalty-toggle-row">
+                  <span>Ready for Collection Alerts</span>
+                  <button
+                    type="button"
+                    className={`loyalty-toggle${readyOn ? ' on' : ''}`}
+                    onClick={() => setReadyOn((v) => !v)}
+                    aria-pressed={readyOn}
+                    aria-label="Ready for collection alerts"
+                  />
+                </div>
+                <div className="loyalty-row loyalty-toggle-row">
+                  <span>Promotions</span>
+                  <button
+                    type="button"
+                    className={`loyalty-toggle${promosOn ? ' on' : ''}`}
+                    onClick={() => setPromosOn((v) => !v)}
+                    aria-pressed={promosOn}
+                    aria-label="Promotions"
+                  />
+                </div>
+              </section>
             </div>
-          ))}
-        </div>
-      </section>
 
-      <section className="loyalty-section" aria-label="Payment methods">
-        <h2>Payment methods</h2>
-        <button
-          type="button"
-          className="loyalty-row"
-          onClick={() =>
-            window.alert('Payment management would open here.')
-          }
-        >
-          Visa ending in **** 1243
-        </button>
-        <button
-          type="button"
-          className="loyalty-row"
-          onClick={() =>
-            window.alert('Payment management would open here.')
-          }
-        >
-          Apple Pay
-        </button>
-      </section>
-
-      <section className="loyalty-section" aria-label="Notifications">
-        <h2>Notifications</h2>
-        <div className="loyalty-row loyalty-toggle-row">
-          <span>Order Status Updates</span>
-          <button
-            type="button"
-            className={`loyalty-toggle${orderStatusOn ? ' on' : ''}`}
-            onClick={() => setOrderStatusOn((v) => !v)}
-            aria-pressed={orderStatusOn}
-            aria-label="Order status updates"
-          />
+            <button type="button" className="loyalty-logout" onClick={handleLogout}>
+              Log Out
+            </button>
+          </div>
         </div>
-        <div className="loyalty-row loyalty-toggle-row">
-          <span>Ready for Collection Alerts</span>
-          <button
-            type="button"
-            className={`loyalty-toggle${readyOn ? ' on' : ''}`}
-            onClick={() => setReadyOn((v) => !v)}
-            aria-pressed={readyOn}
-            aria-label="Ready for collection alerts"
-          />
-        </div>
-        <div className="loyalty-row loyalty-toggle-row">
-          <span>Promotions</span>
-          <button
-            type="button"
-            className={`loyalty-toggle${promosOn ? ' on' : ''}`}
-            onClick={() => setPromosOn((v) => !v)}
-            aria-pressed={promosOn}
-            aria-label="Promotions"
-          />
-        </div>
-      </section>
-
-      <button type="button" className="loyalty-logout" onClick={handleLogout}>
-        <span aria-hidden>⎋</span> Log Out
-      </button>
+      </div>
     </div>
   );
 }

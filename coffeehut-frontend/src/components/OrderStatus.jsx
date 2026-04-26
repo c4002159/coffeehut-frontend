@@ -947,15 +947,23 @@ export default function OrderStatus() {
     setCancellingId(orderId);
     setConfirmCancelId(null);
     try {
-      const res = await fetch(`${API_BASE}/api/staff/orders/${orderId}/cancel`, { method: 'POST' });
-      if (res.ok) {
-        // If currently tracking this order, refresh it
-        if (view === 'tracking' && trackOrder?.id === orderId) {
-          await fetchTrackOrder(orderId);
+      // Fetch order details for refund page only — do NOT cancel yet
+      let customerName = '';
+      let totalPrice = 0;
+      try {
+        const orderRes = await fetch(`${API_BASE}/api/orders/${orderId}`);
+        if (orderRes.ok) {
+          const orderData = await orderRes.json();
+          customerName = orderData?.customerName || '';
+          totalPrice = orderData?.totalPrice || 0;
         }
-        // Refresh hub list
-        await fetchHubOrders();
-      }
+      } catch { /* use defaults */ }
+
+      const customerId = `CUST-${customerName.replace(/\s+/g, '_')}-${orderId}`;
+      // Navigate to refund page — actual cancellation happens after refund succeeds
+      navigate('/payment', {
+        state: { refundMode: true, orderId, customerName, totalPrice, customerId },
+      });
     } catch {
       /* silent */
     } finally {
