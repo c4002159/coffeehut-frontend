@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './Payment.css';
 
@@ -78,6 +78,74 @@ function orderIdFromResponse(data) {
 export default function Payment() {
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Refund mode: navigated here from OrderStatus after cancellation
+  const refundState = location.state?.refundMode ? location.state : null;
+  const [refundLoading, setRefundLoading] = useState(false);
+  const [refundError, setRefundError]     = useState(null);
+  const [refundDone, setRefundDone]       = useState(false);
+
+  const runRefund = useCallback(async () => {
+    if (!refundState) return;
+    setRefundLoading(true);
+    setRefundError(null);
+    try {
+      const res = await fetch('http://localhost:8080/api/payment/refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerID: refundState.customerId,
+          transactionAmount: refundState.totalPrice,
+          orderId: refundState.orderId,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setRefundError(failureMessage(data, res));
+      } else {
+        setRefundDone(true);
+      }
+    } catch (e) {
+      setRefundError(e instanceof Error ? e.message : 'Network error. Please try again.');
+    } finally {
+      setRefundLoading(false);
+    }
+  }, [refundState]);
+
+  // Auto-trigger refund on mount when in refund mode
+  const refundTriggered = useRef(false);
+  useEffect(() => {
+    if (!refundState || refundTriggered.current) return;
+    refundTriggered.current = true;
+    const { customerId, totalPrice, orderId } = refundState;
+    setRefundLoading(true);
+    setRefundError(null);
+
+    const doCancel = () =>
+      fetch(`http://localhost:8080/api/orders/staff/${orderId}/cancel`, { method: 'POST' })
+        .then(() => setRefundDone(true))
+        .catch(() => setRefundDone(true));
+
+    fetch('http://localhost:8080/api/payment/refund', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customerID: customerId, transactionAmount: totalPrice, orderId }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          setRefundError(failureMessage(data, res));
+        } else {
+          // Refund succeeded — now cancel the order
+          return doCancel();
+        }
+      })
+      .catch((e) => setRefundError(e instanceof Error ? e.message : 'Network error.'))
+      .finally(() => setRefundLoading(false));
+  // refundState is stable (from location.state), safe to omit
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [cart, setCart] = useState(() => {
     const fromState = normalizeCart(location.state);
     if (fromState) {
@@ -172,6 +240,7 @@ export default function Payment() {
           subtotal,
           tax,
           total,
+          totalPrice: total,
         }),
       });
       let orderData = null;
@@ -219,6 +288,51 @@ export default function Payment() {
     }
     navigate(-1);
   }, [cart, navigate]);
+
+  if (refundState) {
+    return (
+      <div className="payment-page">
+        <header className="payment-header">
+          <button type="button" className="payment-back" onClick={() => navigate('/order-status')}>Back</button>
+          <h1 className="payment-title">Refund</h1>
+        </header>
+        <section className="payment-card">
+          <h2>Order Cancelled</h2>
+          <div className="payment-row">
+            <span>Customer</span>
+            <span>{refundState.customerName}</span>
+          </div>
+          <div className="payment-row payment-total">
+            <span>Refund amount</span>
+            <span>£{Number(refundState.totalPrice).toFixed(2)}</span>
+          </div>
+          <p className="payment-customer-id">Order #{refundState.orderId}</p>
+        </section>
+        {refundDone && (
+          <div className="payment-failure-card" style={{ borderColor: '#16a34a', background: '#f0fdf4' }}>
+            <h3 style={{ color: '#16a34a' }}>✓ Refund processed</h3>
+            <p>Your refund of £{Number(refundState.totalPrice).toFixed(2)} has been submitted successfully.</p>
+          </div>
+        )}
+        {refundError && (
+          <div className="payment-failure-card">
+            <h3>Refund failed</h3>
+            <p>{refundError}</p>
+          </div>
+        )}
+        {!refundDone && (
+          <button type="button" className="payment-pay-btn" disabled={refundLoading} onClick={runRefund}>
+            {refundLoading ? 'Processing refund…' : 'Process Refund'}
+          </button>
+        )}
+        {refundDone && (
+          <button type="button" className="payment-pay-btn" onClick={() => navigate('/')}>
+            Back to Home
+          </button>
+        )}
+      </div>
+    );
+  }
 
   if (!cart || cart.items.length === 0) {
     return (
