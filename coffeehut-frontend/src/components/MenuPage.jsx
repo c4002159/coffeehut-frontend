@@ -5,7 +5,7 @@ function MenuPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuItems, setMenuItems] = useState([]);
-  const [cart, setCart] = useState(() => location.state?.cartItems?.length ? location.state.cartItems : []);
+  const [cart, setCart] = useState(() => { if (location.state?.cartItems?.length) return location.state.cartItems; try { const saved = localStorage.getItem('cart'); return saved ? JSON.parse(saved) : []; } catch { return []; } });
   const [page, setPage] = useState(() => location.state?.page || 'home');
   const [customerName, setCustomerName] = useState('');
 
@@ -81,10 +81,11 @@ function MenuPage() {
     const capped = Math.min(n, 999);
     setCart(cart.map(c => c.id === id && c.size === size ? { ...c, quantity: capped } : c));
   };
+  useEffect(() => { localStorage.setItem('cart', JSON.stringify(cart)); }, [cart]);
   const total = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
-  const isOpen = () => {
+  const isOpen = () => { return true; // 24h
     const now = new Date();
     const day = now.getDay();
     const hour = now.getHours() + now.getMinutes() / 60;
@@ -100,6 +101,8 @@ function MenuPage() {
       return;
     }
     navigate('/payment', { state: { items: cart, customerName, pickupTime } });
+    setCart([]);
+    localStorage.removeItem('cart');
   };
 
   const popularItems = menuItems.slice(0, 2);
@@ -428,7 +431,7 @@ function MenuPage() {
                         ? <img src={getImage(item.name)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         : <div style={{ width: '100%', height: '100%', background: C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px' }}>☕</div>
                       }
-                      <button onClick={e => { e.stopPropagation(); addToCart(item, 'Regular'); }} style={{ position: 'absolute', bottom: '8px', right: '8px', width: '30px', height: '30px', borderRadius: '50%', background: 'white', border: 'none', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: C.espresso, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>+</button>
+                      <button onClick={e => { e.stopPropagation(); openCustomize(item); }} style={{ position: 'absolute', bottom: '8px', right: '8px', width: '30px', height: '30px', borderRadius: '50%', background: 'white', border: 'none', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: C.espresso, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>+</button>
                     </div>
                     <div style={{ padding: '0 12px 14px' }}>
                       <p style={{ margin: 0, fontWeight: '700', fontSize: '14px', color: C.textMain }}>{item.name}</p>
@@ -492,16 +495,7 @@ function MenuPage() {
                     <h3 style={{ margin: '0 0 3px', fontSize: '15px', fontWeight: '700', color: C.textMain, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</h3>
                     <p style={{ margin: '0 0 12px', fontSize: '12px', color: C.textMuted, fontWeight: '400' }}>Rich and freshly brewed.</p>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        <button onClick={() => addToCart(item, 'Regular')} className="size-pill" style={{ padding: '5px 11px', borderRadius: '999px', border: `1px solid ${C.borderMid}`, background: C.creamDark, color: C.brown, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                          Reg £{item.regularPrice?.toFixed(2)}
-                        </button>
-                        {item.largePrice && (
-                          <button onClick={() => addToCart(item, 'Large')} className="size-pill" style={{ padding: '5px 11px', borderRadius: '999px', border: `1px solid ${C.border}`, background: 'white', color: C.textSub, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                            Lrg £{item.largePrice?.toFixed(2)}
-                          </button>
-                        )}
-                      </div>
+
                       <button onClick={() => openCustomize(item)} className="add-btn" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', background: C.espresso, color: 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 2px 6px rgba(44,26,14,0.22)' }}>
                         + Add
                       </button>
@@ -537,6 +531,7 @@ function MenuPage() {
           <div style={{ paddingBottom: '16px' }}>
             <div style={{ padding: '20px 16px 10px' }}>
               <h3 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Selected Drinks</h3>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}><button onClick={() => setCart([])} style={{ fontSize: '13px', fontWeight: '700', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', background: 'none', border: 'none', cursor: 'pointer' }}>Clear all</button></div>
             </div>
 
             {cart.length === 0 && (
@@ -564,7 +559,7 @@ function MenuPage() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                   <button onClick={() => updateQty(item.id, item.size, -1)} className="qty-btn" style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: C.creamDark, cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.brown, fontWeight: '700' }}>−</button>
-                  <input type="number" min="1" max="999" value={item.quantity} onChange={e => setQtyDirect(item.id, item.size, e.target.value)} onKeyDown={e => { if (["e","E","+","-","."].includes(e.key)) e.preventDefault(); }} style={{ width: "48px", textAlign: "center", fontWeight: "700", fontSize: "15px", color: C.textMain, border: "1.5px solid #e2e8f0", borderRadius: "8px", padding: "4px 0", outline: "none", background: "white" }} />
+                  <input type="number" min="1" max="999" value={item.quantity} onChange={e => { const v = e.target.value.replace(/[^0-9]/g,""); setQtyDirect(item.id, item.size, v === "" ? 1 : Math.min(parseInt(v)||1, 999)); }} onClick={e => e.target.select()} onKeyDown={e => { if (["e","E","+","-","."].includes(e.key)) e.preventDefault(); }} style={{ width: "48px", textAlign: "center", fontWeight: "700", fontSize: "15px", color: C.textMain, border: "1.5px solid #e2e8f0", borderRadius: "8px", padding: "4px 0", outline: "none", background: "white" }} />
                   <button onClick={() => updateQty(item.id, item.size, 1)} className="qty-btn" style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: C.creamDark, cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.brown, fontWeight: '700' }}>+</button>
                 </div>
               </div>
@@ -801,7 +796,7 @@ function RegisterPage({ onSuccess, onGoLogin, onBack }) {
         .reg-inp:focus { border-color: #4A3621 !important; box-shadow: 0 0 0 3px rgba(74,54,33,0.08) !important; }
         .reg-btn:hover { background: #3a2a16 !important; }
       `}</style>
-      <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", minHeight: '100dvh', display: 'flex', background: '#f7f7f6' }} className="reg-split">
+      <div style={{ fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", minHeight: '100dvh', display: 'flex', background: '#f7f7f6', position: 'fixed', inset: 0, zIndex: 9999, overflowY: 'auto' }} className="reg-split">
 
         {/* LEFT — branding panel */}
         <div className="reg-left" style={{ flex: '0 0 45%', position: 'relative', overflow: 'hidden', minHeight: '100dvh', margin: '40px 20px', alignSelf: 'center', borderRadius: '16px', height: 'calc(100dvh - 80px)', maxHeight: '600px', minHeight: 'unset', background: '#4A3621' }}>
@@ -814,7 +809,7 @@ function RegisterPage({ onSuccess, onGoLogin, onBack }) {
             </div>
             <div>
               <h2 style={{ margin: '0 0 16px', fontSize: '36px', fontWeight: '800', color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em' }}>Join the club.<br/>Earn rewards.</h2>
-              {[['☕', 'Earn a free drink every 10 orders'], ['⚡', 'Order ahead, skip the queue'], ['🚆', 'Link your train for perfect timing']].map(([icon, text]) => (
+              {[['☕', 'Earn a free drink every 9 orders'], ['⚡', 'Order ahead, skip the queue'], ['🚆', 'Link your train for perfect timing']].map(([icon, text]) => (
                 <div key={text} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
                   <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>{icon}</div>
                   <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: '500' }}>{text}</span>
