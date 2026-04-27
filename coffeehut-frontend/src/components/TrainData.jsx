@@ -38,7 +38,9 @@ function TrainData() {
     const train = trains.find(t => t.trainId === selected);
     const t = new Date(train.expectedArrival || train.scheduledArrival);
     t.setMinutes(t.getMinutes() + 5);
-    navigate('/', { state: { suggestedPickupTime: t.toISOString().slice(0, 16) } });
+    const offset = t.getTimezoneOffset();
+    const local = new Date(t.getTime() - offset * 60000);
+    navigate('/', { state: { suggestedPickupTime: local.toISOString().slice(0, 16) } });
   };
 
   const handleSelect = (train) => {

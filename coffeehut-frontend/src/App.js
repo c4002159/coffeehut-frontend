@@ -17,7 +17,7 @@ import Schedule        from './components/staff/Schedule';
 
 const CUSTOMER_NAV = [
   { icon: '\u{1F3E0}', label: 'Home',    path: '/',  state: { page: 'home' } },
-  { icon: '\u2615',    label: 'Menu',    path: '/',  state: { page: 'menu' } },
+  { icon: '\u2615',    label: 'Menu',    path: '/',  state: { page: 'menu' }, onClick: () => { localStorage.setItem('menuPage', 'menu'); } },
   { icon: '\u{1F4E6}', label: 'Orders',  path: '/order-status' },
   { icon: '\u{1F464}', label: 'Profile', path: '/loyalty' },
 ];
@@ -30,11 +30,13 @@ const DEFAULT_AUTO_COLLECT = { enabled: true, mins: 15 };
 function CustomerLayout() {
   const navigate  = useNavigate();
   const location  = useLocation();
+  const persistedPage = localStorage.getItem('menuPage') || 'home';
   const getActive = (item) => {
     if (item.path === '/order-status') return location.pathname === '/order-status';
     if (item.path === '/loyalty')      return location.pathname.startsWith('/loyalty');
-    if (item.label === 'Menu')         return location.pathname === '/' && location.state?.page === 'menu';
-    if (item.label === 'Home')         return location.pathname === '/' && location.state?.page !== 'menu';
+    const currentPage = location.pathname === '/' ? (location.state?.page || persistedPage) : null;
+    if (item.label === 'Menu')         return currentPage === 'menu';
+    if (item.label === 'Home')         return currentPage === 'home';
     return false;
   };
   return (
@@ -44,7 +46,7 @@ function CustomerLayout() {
       </div>
       <nav style={{ height: 60, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-around', background: 'white', borderTop: '1px solid #e5e7eb', zIndex: 100 }}>
         {CUSTOMER_NAV.map(item => (
-          <div key={item.label} onClick={() => navigate(item.path, item.state ? { state: item.state } : undefined)}
+          <div key={item.label} onClick={() => { if (item.state?.page) localStorage.setItem('menuPage', item.state.page); navigate(item.path, item.state ? { state: item.state } : undefined); }}
             style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', color: getActive(item) ? '#4A3621' : '#9ca3af', padding: '8px 0' }}>
             <span style={{ fontSize: '20px' }}>{item.icon}</span>
             <span style={{ fontSize: '10px', fontWeight: getActive(item) ? 'bold' : '500', marginTop: '2px' }}>{item.label}</span>
