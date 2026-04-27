@@ -380,6 +380,7 @@ export default function LoyaltyScheme() {
               </div>
               <h2 className="loyalty-name">{displayName}</h2>
               {email ? <p className="loyalty-email">{email}</p> : null}
+              <div className="loyalty-member-badge">★ Loyalty Member</div>
             </section>
           </aside>
 
@@ -387,15 +388,19 @@ export default function LoyaltyScheme() {
             <section className="loyalty-section loyalty-section-rewards" aria-label="Loyalty rewards">
               <div className="loyalty-stamp-head">
                 <h2 className="loyalty-section-title-inline">Loyalty Rewards</h2>
-                <span className="loyalty-stamp-count">
-                  {stamps}/9
-                </span>
+                <span className="loyalty-stamp-count">{stamps}/9</span>
               </div>
               {hasFreeCup ? (
-                <p className="loyalty-stamp-hint free">Free drink ready to redeem!</p>
+                <p className="loyalty-stamp-hint free">🎉 Free drink ready to redeem!</p>
               ) : (
                 <p className="loyalty-stamp-hint">{stampHint}</p>
               )}
+              <div className="loyalty-stamp-progress-wrap">
+                <div
+                  className="loyalty-stamp-progress-bar"
+                  style={{ width: `${(stamps / 9) * 100}%` }}
+                />
+              </div>
               <div className="loyalty-cups" role="list">
                 {Array.from({ length: 9 }, (_, i) => (
                   <div
@@ -404,7 +409,7 @@ export default function LoyaltyScheme() {
                     className={`loyalty-cup${i < stamps ? ' filled' : ''}`}
                     aria-label={i < stamps ? 'Stamp earned' : 'Empty stamp'}
                   >
-                    {i < stamps ? '☕' : '○'}
+                    {i < stamps ? '☕' : ''}
                   </div>
                 ))}
               </div>
@@ -418,7 +423,14 @@ export default function LoyaltyScheme() {
                   className="loyalty-row loyalty-row-chevron"
                   onClick={() => window.alert('Payment management would open here.')}
                 >
-                  Horsepay
+                  Visa Card •••• 4242
+                </button>
+                <button
+                  type="button"
+                  className="loyalty-row loyalty-row-chevron"
+                  onClick={() => window.alert('Payment management would open here.')}
+                >
+                  Apple Pay
                 </button>
               </section>
             </div>

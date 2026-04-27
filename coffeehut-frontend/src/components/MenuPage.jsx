@@ -16,6 +16,15 @@ function MenuPage() {
     if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
     if (location.state?.page) setPage(location.state.page);
     if (location.state?.cartItems) setCart(location.state.cartItems);
+    // Apply pickup time from reorder sheet
+    if (location.state?.reorderPickupTime) {
+      if (location.state.reorderPickupTime === 'ASAP') {
+        setPickupTime(getDefaultPickupTime());
+      } else {
+        setPickupTime(location.state.reorderPickupTime);
+      }
+      setPickupMode('time');
+    }
   }, [location.state]);
   
   useEffect(() => {
@@ -135,7 +144,12 @@ function MenuPage() {
       alert('Please enter your name and pickup time!');
       return;
     }
-    navigate('/payment', { state: { items: cart, customerName, pickupTime } });
+    const selectedMs = new Date(pickupTime).getTime();
+    if (isNaN(selectedMs) || selectedMs < Date.now()) {
+      alert('Please select a pickup time in the future.');
+      return;
+    }
+    navigate('/payment', { state: { items: cart, customerName, pickupTime, taxRate: 0.09, serviceFee: 0.50 } });
     setCart([]);
     localStorage.removeItem('cart');
   };
@@ -615,21 +629,57 @@ function MenuPage() {
               </div>
               {pickupMode === 'time' ? (
 <div style={{display:"flex",gap:"10px",flexDirection:"column"}}>
-  <input type="date" value={pickupDate} min={new Date().toISOString().slice(0,10)} 
-    onChange={e=>{setPickupDate(e.target.value);setPickupTime(e.target.value+"T"+pickupHour+":"+pickupMinute);}} 
+  <input type="date" value={pickupDate} min={new Date().toISOString().slice(0,10)}
+    onChange={e=>{
+      const d=e.target.value;
+      setPickupDate(d);
+      setPickupTime(d+"T"+pickupHour+":"+pickupMinute);
+    }}
     style={{width:"100%",boxSizing:"border-box",border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}/>
   <div style={{display:"flex",gap:"10px",marginBottom:"4px"}}>
-  <span style={{flex:1,fontSize:"13px",fontWeight:"700",color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em"}}>HOUR</span>
-  <span style={{flex:1,fontSize:"13px",fontWeight:"700",color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em"}}>MINUTE</span>
-</div>
-  <div style={{display:"flex",gap:"10px"}}>
-    <select value={pickupHour} onChange={e=>{setPickupHour(e.target.value);setPickupTime(pickupDate+"T"+e.target.value+":"+pickupMinute);}} 
-      style={{flex:1,border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}>
-{Array.from({length:24},(_,i)=>String(i).padStart(2,"0")).map(h=><option key={h} value={h}>{h}</option>)}    </select>
-    <select value={pickupMinute} onChange={e=>{setPickupMinute(e.target.value);setPickupTime(pickupDate+"T"+pickupHour+":"+e.target.value);}} 
-      style={{flex:1,border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}>
-{["00","05","10","15","20","25","30","35","40","45","50","55"].map(m=><option key={m} value={m}>{m}</option>)}    </select>
+    <span style={{flex:1,fontSize:"13px",fontWeight:"700",color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em"}}>HOUR</span>
+    <span style={{flex:1,fontSize:"13px",fontWeight:"700",color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em"}}>MINUTE</span>
   </div>
+  <div style={{display:"flex",gap:"10px"}}>
+    <select value={pickupHour}
+      onChange={e=>{
+        const h=e.target.value;
+        setPickupHour(h);
+        setPickupTime(pickupDate+"T"+h+":"+pickupMinute);
+      }}
+      style={{flex:1,border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}>
+      {Array.from({length:24},(_,i)=>{
+        const h=String(i).padStart(2,"0");
+        const isToday=pickupDate===new Date().toISOString().slice(0,10);
+        const nowH=new Date().getHours();
+        const past=isToday && i<nowH;
+        return <option key={h} value={h} disabled={past} style={{color:past?"#ccc":"inherit"}}>{h}</option>;
+      })}
+    </select>
+    <select value={pickupMinute}
+      onChange={e=>{
+        const m=e.target.value;
+        setPickupMinute(m);
+        setPickupTime(pickupDate+"T"+pickupHour+":"+m);
+      }}
+      style={{flex:1,border:`1.5px solid ${C.borderMid}`,borderRadius:"12px",padding:"14px",fontSize:"14px",outline:"none",background:"white",color:C.textMain}}>
+      {["00","05","10","15","20","25","30","35","40","45","50","55"].map(m=>{
+        const isToday=pickupDate===new Date().toISOString().slice(0,10);
+        const nowH=new Date().getHours();
+        const nowM=new Date().getMinutes();
+        const sameHour=isToday && parseInt(pickupHour,10)===nowH;
+        const past=sameHour && parseInt(m,10)<=nowM;
+        return <option key={m} value={m} disabled={past} style={{color:past?"#ccc":"inherit"}}>{m}</option>;
+      })}
+    </select>
+  </div>
+  {(()=>{
+    const sel=new Date(pickupTime);
+    const isPast=!isNaN(sel.getTime()) && sel.getTime()<Date.now();
+    return isPast ? (
+      <p style={{margin:"4px 0 0",fontSize:"12px",color:"#dc2626",fontWeight:"600"}}>⚠️ Please select a future time</p>
+    ) : null;
+  })()}
 </div>              ) : (
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>🚆</span>
@@ -697,19 +747,23 @@ function LoginPage({ onSuccess, onGoRegister, onBack }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
+  const handleLogin = () => {
     if (!email || !password) { setError('Please fill in all fields'); return; }
-    setError(''); setLoading(true);
+    setError('');
+    // Loyalty login: verify against localStorage (customer accounts are local-only)
     try {
-      const res = await fetch('http://localhost:8080/api/auth/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Invalid email or password'); return; }
-      onSuccess(data);
-    } catch { setError('Network error, please try again.'); }
-    finally { setLoading(false); }
+      const saved = localStorage.getItem('member');
+      if (saved) {
+        const m = JSON.parse(saved);
+        if (m.email === email.trim() && m.password === password) {
+          onSuccess(m);
+          return;
+        }
+      }
+      setError('Invalid email or password');
+    } catch {
+      setError('Something went wrong, please try again.');
+    }
   };
 
   const inp = { width: '100%', boxSizing: 'border-box', height: '52px', borderRadius: '12px', border: '1.5px solid #e2e8f0', background: 'white', padding: '0 16px', fontSize: '15px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: '#1a1a1a', transition: 'border-color 0.2s' };
@@ -808,21 +862,16 @@ function RegisterPage({ onSuccess, onGoLogin, onBack }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleRegister = async () => {
+  const handleRegister = () => {
     if (!name || !email || !password || !confirm) { setError('Please fill in all fields'); return; }
     if (password !== confirm) { setError('Passwords do not match'); return; }
     if (!agreed) { setError('Please agree to the Terms of Service'); return; }
-    setError(''); setLoading(true);
-    try {
-      const res = await fetch('http://localhost:8080/api/auth/register', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password })
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Registration failed'); return; }
-      onSuccess();
-    } catch { setError('Network error, please try again.'); }
-    finally { setLoading(false); }
+    setError('');
+    // Save loyalty member to localStorage (no backend registration needed for customers)
+    const member = { name: name.trim(), email: email.trim(), password, isLoyaltyMember: true, totalOrders: 0, freeCups: 0 };
+    localStorage.setItem('member', JSON.stringify(member));
+    // Carry over any existing guest order IDs
+    onSuccess();
   };
 
   const inp = { width: '100%', boxSizing: 'border-box', height: '52px', borderRadius: '12px', border: '1.5px solid #e2e8f0', background: 'white', padding: '0 16px', fontSize: '15px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: '#1a1a1a', transition: 'border-color 0.2s' };

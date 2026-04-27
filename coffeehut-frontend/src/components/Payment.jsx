@@ -23,9 +23,12 @@ function normalizeCart(raw) {
     const qty = Math.max(1, Number(item?.quantity) || 1);
     const price = Number(item?.price);
     const unit = Number.isFinite(price) ? price : 0;
-    return { name, quantity: qty, price: unit };
+    const itemId = item?.itemId ?? item?.id ?? null;
+    return { name, quantity: qty, price: unit, itemId, size: item?.size || 'Regular' };
   });
-  return { customerName, pickupTime, items: normalizedItems };
+  const taxRate = typeof raw.taxRate === 'number' && raw.taxRate >= 0 ? raw.taxRate : 0;
+  const serviceFee = typeof raw.serviceFee === 'number' && raw.serviceFee >= 0 ? raw.serviceFee : 0;
+  return { customerName, pickupTime, items: normalizedItems, taxRate, serviceFee };
 }
 
 function totals(cart) {
@@ -37,9 +40,13 @@ function totals(cart) {
     typeof cart.taxRate === 'number' && cart.taxRate >= 0
       ? cart.taxRate
       : 0;
+  const serviceFee =
+    typeof cart.serviceFee === 'number' && cart.serviceFee >= 0
+      ? cart.serviceFee
+      : 0;
   const tax = Math.round(subtotal * taxRate * 100) / 100;
-  const total = Math.round((subtotal + tax) * 100) / 100;
-  return { subtotal, tax, total };
+  const total = Math.round((subtotal + tax + serviceFee) * 100) / 100;
+  return { subtotal, tax, serviceFee, total };
 }
 
 function paymentSucceeded(res, data) {
@@ -200,8 +207,8 @@ export default function Payment() {
     );
   }, [cart]);
 
-  const { subtotal, tax, total } = useMemo(
-    () => (cart ? totals(cart) : { subtotal: 0, tax: 0, total: 0 }),
+  const { subtotal, tax, serviceFee, total } = useMemo(
+    () => (cart ? totals(cart) : { subtotal: 0, tax: 0, serviceFee: 0, total: 0 }),
     [cart]
   );
   const freeCupsAvailable = Math.max(0, Number(member?.freeCups) || 0);
@@ -210,6 +217,7 @@ export default function Payment() {
   const discountAmount = autoRedeemFreeCup ? total : 0;
   const payableSubtotal = autoRedeemFreeCup ? 0 : subtotal;
   const payableTax = autoRedeemFreeCup ? 0 : tax;
+  const payableServiceFee = autoRedeemFreeCup ? 0 : serviceFee;
   const payableTotal = autoRedeemFreeCup ? 0 : total;
 
   const runPayment = useCallback(async () => {
@@ -256,6 +264,7 @@ export default function Payment() {
           items: cart.items,
           subtotal: payableSubtotal,
           tax: payableTax,
+          serviceFee: payableServiceFee,
           total: payableTotal,
           totalPrice: payableTotal,
         }),
@@ -285,18 +294,27 @@ export default function Payment() {
         if (parsedMember && parsedMember.isLoyaltyMember === true) {
           const currentTotal = Math.max(0, Number(parsedMember.totalOrders) || 0);
           const currentFreeCups = Math.max(0, Number(parsedMember.freeCups) || 0);
-          const usedFreeCup = autoRedeemFreeCup && currentFreeCups > 0;
-          const reachedReward = !usedFreeCup && currentTotal + 1 >= 9;
-          const nextTotal = usedFreeCup
-            ? currentTotal
-            : reachedReward
-            ? 0
-            : currentTotal + 1;
-          const nextFreeCups = usedFreeCup
-            ? currentFreeCups - 1
-            : reachedReward
-            ? currentFreeCups + 1
-            : currentFreeCups;
+
+          let nextTotal = currentTotal;
+          let nextFreeCups = currentFreeCups;
+
+          if (autoRedeemFreeCup && currentFreeCups > 0) {
+            // Used a free cup — deduct one, don't count this order as a stamp
+            nextFreeCups = currentFreeCups - 1;
+            nextTotal = currentTotal; // stamps unchanged
+          } else {
+            // Normal paid order — add one stamp
+            const newTotal = currentTotal + 1;
+            if (newTotal >= 9) {
+              // Earned a free cup! Reset stamps to 0
+              nextTotal = 0;
+              nextFreeCups = currentFreeCups + 1;
+            } else {
+              nextTotal = newTotal;
+              nextFreeCups = currentFreeCups;
+            }
+          }
+
           localStorage.setItem(
             'member',
             JSON.stringify({
@@ -324,7 +342,7 @@ export default function Payment() {
     } finally {
       setLoading(false);
     }
-  }, [autoRedeemFreeCup, cart, checkoutCustomerId, navigate, payableSubtotal, payableTax, payableTotal]);
+  }, [autoRedeemFreeCup, cart, checkoutCustomerId, navigate, payableSubtotal, payableTax, payableServiceFee, payableTotal]);
 
   const persistCartAndGoBack = useCallback(() => {
     if (cart) {
@@ -443,9 +461,15 @@ export default function Payment() {
           <span>Subtotal</span>
           <span>£{subtotal.toFixed(2)}</span>
         </div>
+        {serviceFee > 0 && (
+          <div className="payment-row payment-row-muted">
+            <span>Service Fee</span>
+            <span>£{serviceFee.toFixed(2)}</span>
+          </div>
+        )}
         {tax > 0 && (
           <div className="payment-row payment-row-muted">
-            <span>Tax</span>
+            <span>Tax (9%)</span>
             <span>£{tax.toFixed(2)}</span>
           </div>
         )}
