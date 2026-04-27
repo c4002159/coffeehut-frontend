@@ -37,7 +37,7 @@ function CustomerLayout() {
   const location = useLocation();
   const getActive = (item) => {
     if (item.path === '/order-status') return location.pathname === '/order-status';
-    if (item.path === '/loyalty')      return location.pathname === '/loyalty';
+    if (item.path === '/loyalty')      return location.pathname.startsWith('/loyalty');
     if (item.label === 'Menu')         return location.pathname === '/' && location.state?.page === 'menu';
     if (item.label === 'Home')         return location.pathname === '/' && location.state?.page !== 'menu';
     return false;
@@ -79,7 +79,7 @@ function App() {
                     <Route path="/"             element={<MenuPage />} />
                     <Route path="/order-status" element={<OrderStatus />} />
                     <Route path="/train"        element={<TrainData />} />
-                    <Route path="/loyalty"      element={<LoyaltyScheme />} />
+                    <Route path="/loyalty/*"    element={<LoyaltyScheme />} />
                 </Route>
                 <Route path="/payment"      element={<Payment />} />
                 <Route path="/staff" element={<StaffLogin onLoginSuccess={() => setIsLoggedIn(true)} />} />

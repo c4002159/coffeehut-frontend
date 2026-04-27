@@ -28,9 +28,6 @@ export default function LoyaltyScheme() {
   const [guestTab, setGuestTab] = useState(() =>
     location.pathname.startsWith('/loyalty/register') ? 'register' : 'login'
   );
-  const [orderStatusOn, setOrderStatusOn] = useState(true);
-  const [readyOn, setReadyOn] = useState(true);
-  const [promosOn, setPromosOn] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [registerForm, setRegisterForm] = useState({
     name: '',
@@ -55,9 +52,13 @@ export default function LoyaltyScheme() {
     const n = Number(member?.totalOrders);
     return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
   }, [member]);
+  const freeCups = useMemo(() => {
+    const n = Number(member?.freeCups);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+  }, [member]);
 
   const stamps = totalOrders % 10;
-  const nextOrderFree = stamps === 9;
+  const hasFreeCup = freeCups > 0;
 
   const displayName =
     typeof member?.name === 'string' && member.name.trim()
@@ -71,11 +72,11 @@ export default function LoyaltyScheme() {
   const initial = displayName.charAt(0).toUpperCase() || '?';
 
   const stampHint = useMemo(() => {
-    if (nextOrderFree) return null;
+    if (hasFreeCup) return `${freeCups} free drink${freeCups > 1 ? 's' : ''} available`;
     const remaining = 9 - stamps;
     if (remaining <= 0) return null;
     return `${remaining} more to your next free drink!`;
-  }, [nextOrderFree, stamps]);
+  }, [freeCups, hasFreeCup, stamps]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('member');
@@ -96,7 +97,9 @@ export default function LoyaltyScheme() {
       const nextMember = {
         name: em.split('@')[0] || 'Member',
         email: em,
-        totalOrders: member?.totalOrders ?? 0,
+        isLoyaltyMember: true,
+        totalOrders: member?.isLoyaltyMember ? member?.totalOrders ?? 0 : 0,
+        freeCups: member?.isLoyaltyMember ? member?.freeCups ?? 0 : 0,
       };
       saveMember(nextMember);
       navigate('/loyalty/profile');
@@ -110,7 +113,7 @@ export default function LoyaltyScheme() {
       const name = registerForm.name.trim() || 'Member';
       const em = registerForm.email.trim();
       if (!em) return;
-      const nextMember = { name, email: em, totalOrders: 0 };
+      const nextMember = { name, email: em, isLoyaltyMember: true, totalOrders: 0, freeCups: 0 };
       saveMember(nextMember);
       navigate('/loyalty/profile');
     },
@@ -146,14 +149,14 @@ export default function LoyaltyScheme() {
         <button
           type="button"
           className="loyalty-cta loyalty-cta-primary"
-          onClick={() => navigate('/loyalty/register')}
+          onClick={() => navigate('/?authPage=register', { state: { authPage: 'register' } })}
         >
           Join Loyalty
         </button>
         <button
           type="button"
           className="loyalty-cta loyalty-cta-outline"
-          onClick={() => navigate('/loyalty/login')}
+          onClick={() => navigate('/?authPage=login', { state: { authPage: 'login' } })}
         >
           Login
         </button>
@@ -388,8 +391,8 @@ export default function LoyaltyScheme() {
                   {stamps}/9
                 </span>
               </div>
-              {nextOrderFree ? (
-                <p className="loyalty-stamp-hint free">Next order is FREE!</p>
+              {hasFreeCup ? (
+                <p className="loyalty-stamp-hint free">Free drink ready to redeem!</p>
               ) : (
                 <p className="loyalty-stamp-hint">{stampHint}</p>
               )}
@@ -415,49 +418,8 @@ export default function LoyaltyScheme() {
                   className="loyalty-row loyalty-row-chevron"
                   onClick={() => window.alert('Payment management would open here.')}
                 >
-                  Visa ending in **** 4242
+                  Horsepay
                 </button>
-                <button
-                  type="button"
-                  className="loyalty-row loyalty-row-chevron"
-                  onClick={() => window.alert('Payment management would open here.')}
-                >
-                  Apple Pay
-                </button>
-              </section>
-
-              <section className="loyalty-section" aria-label="Notifications">
-                <h2 className="loyalty-section-heading">Notifications</h2>
-                <div className="loyalty-row loyalty-toggle-row">
-                  <span>Order Status Updates</span>
-                  <button
-                    type="button"
-                    className={`loyalty-toggle${orderStatusOn ? ' on' : ''}`}
-                    onClick={() => setOrderStatusOn((v) => !v)}
-                    aria-pressed={orderStatusOn}
-                    aria-label="Order status updates"
-                  />
-                </div>
-                <div className="loyalty-row loyalty-toggle-row">
-                  <span>Ready for Collection Alerts</span>
-                  <button
-                    type="button"
-                    className={`loyalty-toggle${readyOn ? ' on' : ''}`}
-                    onClick={() => setReadyOn((v) => !v)}
-                    aria-pressed={readyOn}
-                    aria-label="Ready for collection alerts"
-                  />
-                </div>
-                <div className="loyalty-row loyalty-toggle-row">
-                  <span>Promotions</span>
-                  <button
-                    type="button"
-                    className={`loyalty-toggle${promosOn ? ' on' : ''}`}
-                    onClick={() => setPromosOn((v) => !v)}
-                    aria-pressed={promosOn}
-                    aria-label="Promotions"
-                  />
-                </div>
               </section>
             </div>
 

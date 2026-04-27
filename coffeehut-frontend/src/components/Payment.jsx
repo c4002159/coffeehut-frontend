@@ -78,6 +78,16 @@ function orderIdFromResponse(data) {
 export default function Payment() {
   const location = useLocation();
   const navigate = useNavigate();
+  const member = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('member');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   // Refund mode: navigated here from OrderStatus after cancellation
   const refundState = location.state?.refundMode ? location.state : null;
@@ -194,6 +204,13 @@ export default function Payment() {
     () => (cart ? totals(cart) : { subtotal: 0, tax: 0, total: 0 }),
     [cart]
   );
+  const freeCupsAvailable = Math.max(0, Number(member?.freeCups) || 0);
+  const autoRedeemFreeCup =
+    Boolean(member?.isLoyaltyMember) && freeCupsAvailable > 0;
+  const discountAmount = autoRedeemFreeCup ? total : 0;
+  const payableSubtotal = autoRedeemFreeCup ? 0 : subtotal;
+  const payableTax = autoRedeemFreeCup ? 0 : tax;
+  const payableTotal = autoRedeemFreeCup ? 0 : total;
 
   const runPayment = useCallback(async () => {
     if (!cart || cart.items.length === 0) return;
@@ -210,7 +227,7 @@ export default function Payment() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerId: idForRequest,
-          amount: total,
+          amount: payableTotal,
           customerName: cart.customerName,
           pickupTime: cart.pickupTime,
           items: cart.items,
@@ -237,10 +254,10 @@ export default function Payment() {
           customerName: cart.customerName,
           pickupTime: cart.pickupTime,
           items: cart.items,
-          subtotal,
-          tax,
-          total,
-          totalPrice: total,
+          subtotal: payableSubtotal,
+          tax: payableTax,
+          total: payableTotal,
+          totalPrice: payableTotal,
         }),
       });
       let orderData = null;
@@ -261,6 +278,37 @@ export default function Payment() {
 
       const oid = orderIdFromResponse(orderData);
       localStorage.setItem('lastOrderCustomerName', cart.customerName);
+      // Only registered loyalty members accumulate stamps.
+      try {
+        const rawMember = localStorage.getItem('member');
+        const parsedMember = rawMember ? JSON.parse(rawMember) : null;
+        if (parsedMember && parsedMember.isLoyaltyMember === true) {
+          const currentTotal = Math.max(0, Number(parsedMember.totalOrders) || 0);
+          const currentFreeCups = Math.max(0, Number(parsedMember.freeCups) || 0);
+          const usedFreeCup = autoRedeemFreeCup && currentFreeCups > 0;
+          const reachedReward = !usedFreeCup && currentTotal + 1 >= 9;
+          const nextTotal = usedFreeCup
+            ? currentTotal
+            : reachedReward
+            ? 0
+            : currentTotal + 1;
+          const nextFreeCups = usedFreeCup
+            ? currentFreeCups - 1
+            : reachedReward
+            ? currentFreeCups + 1
+            : currentFreeCups;
+          localStorage.setItem(
+            'member',
+            JSON.stringify({
+              ...parsedMember,
+              totalOrders: nextTotal,
+              freeCups: nextFreeCups,
+            })
+          );
+        }
+      } catch {
+        /* ignore member parse/save issues */
+      }
       if (oid != null) {
         const saved = JSON.parse(localStorage.getItem('myOrderIds') || '[]');
         if (!saved.includes(Number(oid))) saved.push(Number(oid));
@@ -276,7 +324,7 @@ export default function Payment() {
     } finally {
       setLoading(false);
     }
-  }, [cart, checkoutCustomerId, navigate, subtotal, tax, total]);
+  }, [autoRedeemFreeCup, cart, checkoutCustomerId, navigate, payableSubtotal, payableTax, payableTotal]);
 
   const persistCartAndGoBack = useCallback(() => {
     if (cart) {
@@ -401,9 +449,15 @@ export default function Payment() {
             <span>£{tax.toFixed(2)}</span>
           </div>
         )}
+        {autoRedeemFreeCup && (
+          <div className="payment-row payment-row-muted">
+            <span>Loyalty free cup discount</span>
+            <span>-£{discountAmount.toFixed(2)}</span>
+          </div>
+        )}
         <div className="payment-row payment-total">
           <span>Total</span>
-          <span>£{total.toFixed(2)}</span>
+          <span>£{payableTotal.toFixed(2)}</span>
         </div>
         <p className="payment-customer-id">
           Reference: {checkoutCustomerId || '…'}
