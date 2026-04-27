@@ -47,7 +47,7 @@ export default function BottomNav({ active, onHome, onMenu }) {
       label: 'Profile',
       action: () => {
         const m = localStorage.getItem('member');
-        navigate('/loyalty', { state: m ? {} : { tab: 'register' } });
+        navigate(m ? '/loyalty/profile' : '/loyalty/register');
       },
     },
   ];

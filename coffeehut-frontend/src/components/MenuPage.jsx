@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 function MenuPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const authPageFromQuery = new URLSearchParams(location.search).get('authPage');
   const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState(() => { if (location.state?.cartItems?.length) return location.state.cartItems; try { const saved = localStorage.getItem('cart'); return saved ? JSON.parse(saved) : []; } catch { return []; } });
   const [page, setPage] = useState(() => location.state?.page || 'home');
@@ -16,9 +17,40 @@ function MenuPage() {
     if (location.state?.page) setPage(location.state.page);
     if (location.state?.cartItems) setCart(location.state.cartItems);
   }, [location.state]);
+  
+  useEffect(() => {
+    if (location.state?.authPage === 'login' || location.state?.authPage === 'register') {
+      setAuthPage(location.state.authPage);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    if (authPageFromQuery === 'login' || authPageFromQuery === 'register') {
+      setAuthPage(authPageFromQuery);
+    }
+  }, [authPageFromQuery]);
+
   const [customerPhone, setCustomerPhone] = useState('');
-  const getDefaultDate = () => new Date().toISOString().slice(0, 10);
-  const getDefaultPickupTime = () => { const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0); return d.toISOString().slice(0, 16); };
+  const toLocalDateTimeInput = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${hh}:${mm}`;
+  };
+  const getDefaultDate = () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+  const getDefaultPickupTime = () => {
+    const d = new Date();
+    d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+    return toLocalDateTimeInput(d);
+  };
   const [pickupDate, setPickupDate] = useState(getDefaultDate);
   const [pickupHour, setPickupHour] = useState(String(new Date().getHours()).padStart(2,"0"));
   const [pickupMinute, setPickupMinute] = useState(String(Math.ceil(new Date().getMinutes()/5)*5%60).padStart(2,"0"));
@@ -34,7 +66,10 @@ function MenuPage() {
   const [selectedTemp, setSelectedTemp] = useState('Hot');
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [specialNotes, setSpecialNotes] = useState('');
-  const [authPage, setAuthPage] = useState(null); // null | 'login' | 'register'
+  const [authPage, setAuthPage] = useState(() => {
+    if (authPageFromQuery === 'login' || authPageFromQuery === 'register') return authPageFromQuery;
+    return location.state?.authPage || null;
+  }); // null | 'login' | 'register'
   const [member, setMember] = useState(() => {
     const saved = localStorage.getItem('member');
     return saved ? JSON.parse(saved) : null;
@@ -157,7 +192,17 @@ function MenuPage() {
   // ── LOGIN PAGE ──
   if (authPage === "login") {
     return <LoginPage
-      onSuccess={(m) => { localStorage.setItem('member', JSON.stringify(m)); setMember(m); setAuthPage(null); }}
+      onSuccess={(m) => {
+        const totalOrders = Number(m?.totalOrders);
+        const normalized = {
+          ...m,
+          isLoyaltyMember: true,
+          totalOrders: Number.isFinite(totalOrders) && totalOrders >= 0 ? Math.floor(totalOrders) : 0,
+        };
+        localStorage.setItem('member', JSON.stringify(normalized));
+        setMember(normalized);
+        setAuthPage(null);
+      }}
       onGoRegister={() => setAuthPage('register')}
       onBack={() => setAuthPage(null)}
     />;
