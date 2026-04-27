@@ -1,4 +1,4 @@
-// OrderDetail.jsx — Order Detail Page / 订单详情页面 -WeiqiWang
+// OrderDetail.jsx — Order Detail Page -WeiqiWang
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
@@ -33,14 +33,10 @@ function useStepStatusLabel(order) {
                 return;
             }
             if (order.status === 'in_progress') {
-                const startTime = order.acceptedAt ? new Date(order.acceptedAt).getTime() : new Date(order.createdAt).getTime();
-                const elapsed = Math.floor((now - startTime) / 1000);
-                const remaining = OVERDUE_THRESHOLDS.in_progress - elapsed;
                 if (overdue) {
-                    setLabel('Overdue · Taking too long'); setColor('text-red-500 font-semibold'); setClockBg('bg-red-100 text-red-500');
+                    setLabel('Past pickup time'); setColor('text-red-500 font-semibold'); setClockBg('bg-red-100 text-red-500');
                 } else {
-                    const m = Math.floor(remaining / 60), s = remaining % 60;
-                    setLabel(`Be making within ${m > 0 ? m + 'm ' : ''}${s}s`); setColor('text-slate-500'); setClockBg('bg-primary/10 text-primary');
+                    setLabel('In progress'); setColor('text-slate-500'); setClockBg('bg-primary/10 text-primary');
                 }
                 return;
             }
@@ -56,29 +52,15 @@ function useStepStatusLabel(order) {
     return { label, color, clockBg };
 }
 
-// Determine the status the order was in when it was cancelled.
-// Priority: use cancelledFrom field set by cancelOrder() in api.js (most reliable).
-// Fallback: infer from timestamp fields (covers edge cases / real backend).
-// 判断订单取消时所处的状态：
-//   优先读 cancelledFrom 字段（cancelOrder() 写入，最可靠）
-//   退而推断时间戳（兜底，兼容真实后端）
 function getCancelledFrom(order) {
     if (!order || order.status !== 'cancelled') return null;
-    // Primary: explicit field set by cancelOrder mock
-    // 优先：mock cancelOrder 写入的显式字段
     if (order.cancelledFrom) return order.cancelledFrom;
-    // Fallback: infer from timestamps
-    // 退而：通过时间戳推断
     if (!order.acceptedAt) return 'pending';
     if (!order.readyAt)    return 'in_progress';
     return 'ready';
 }
 
-// Label shown in restore confirmation modal / 恢复确认弹窗里显示的目标区域名称
-const SECTION_LABEL = {
-    pending:     'New Orders',
-    in_progress: 'Preparing',
-};
+const SECTION_LABEL = { pending: 'New Orders', in_progress: 'Preparing' };
 
 export default function OrderDetail() {
     const { id } = useParams();
@@ -91,63 +73,34 @@ export default function OrderDetail() {
     const [showRestoreModal, setShowRestoreModal] = useState(false);
     const [noteText, setNoteText] = useState('');
 
-    useEffect(() => {
-        fetchOrderDetail(id).then(setOrder).catch(console.error);
-    }, [id]);
+    useEffect(() => { fetchOrderDetail(id).then(setOrder).catch(console.error); }, [id]);
 
     const isFinished  = order?.status === 'collected' || order?.status === 'cancelled';
     const isCancelled = order?.status === 'cancelled';
-
     const cancelledFrom = getCancelledFrom(order);
     const canRestore    = isCancelled && (cancelledFrom === 'pending' || cancelledFrom === 'in_progress');
-    // Restore target: the exact status the order was in before it was cancelled
-    // 恢复目标：取消前的原始状态，不固定为 pending
     const restoreTarget = cancelledFrom;
-
     const { label: stepLabel, color: stepColor, clockBg } = useStepStatusLabel(order);
 
-    const refreshOrder = async () => {
-        const updated = await fetchOrderDetail(id);
-        setOrder(updated);
-    };
-
+    const refreshOrder = async () => { const updated = await fetchOrderDetail(id); setOrder(updated); };
     const updateStatus = async (newStatus) => {
         try { await updateOrderStatus(id, newStatus); await refreshOrder(); }
-        catch (err) { alert('Failed to update status'); }
+        catch { alert('Failed to update status'); }
     };
-
     const handleCancel = async () => {
-        try {
-            await cancelOrder(id);
-            setShowCancelModal(false);
-            navigate(location.state?.from || '/dashboard');
-        } catch (err) { alert('Failed to cancel order'); }
+        try { await cancelOrder(id); setShowCancelModal(false); navigate(location.state?.from || '/dashboard'); }
+        catch { alert('Failed to cancel order'); }
     };
-
-    // Restore order to its original status (pending or in_progress)
-    // 将订单恢复到取消前的原始状态（pending 或 in_progress）
     const handleRestore = async () => {
-        try {
-            await updateOrderStatus(id, restoreTarget);
-            setShowRestoreModal(false);
-            await refreshOrder();
-        } catch (err) { alert('Failed to restore order'); }
+        try { await updateOrderStatus(id, restoreTarget); setShowRestoreModal(false); await refreshOrder(); }
+        catch { alert('Failed to restore order'); }
     };
-
     const handleAddNote = async () => {
         if (!noteText.trim()) return;
-        try {
-            await addOrderNote(id, noteText);
-            await refreshOrder();
-            setShowNoteModal(false);
-            setNoteText('');
-        } catch (err) { alert('Failed to add note'); }
+        try { await addOrderNote(id, noteText); await refreshOrder(); setShowNoteModal(false); setNoteText(''); }
+        catch { alert('Failed to add note'); }
     };
-
-    const handleBack = () => {
-        if (location.state?.from) navigate(location.state.from);
-        else navigate(-1);
-    };
+    const handleBack = () => { if (location.state?.from) navigate(location.state.from); else navigate(-1); };
 
     if (!order) return <div className="p-8 text-center">Loading...</div>;
 
@@ -158,7 +111,7 @@ export default function OrderDetail() {
 
     const formatPickupTime = (time) => {
         if (!time) return 'N/A';
-        return new Date(time).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        return new Date(time).toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
     };
 
     const actionLabel = () => {
@@ -184,11 +137,14 @@ export default function OrderDetail() {
             </header>
 
             <main className="p-4 space-y-6 pb-32 overflow-y-auto">
+
                 {/* Customer Info */}
                 <section>
                     <h3 className="text-primary text-sm font-bold uppercase tracking-wider mb-3 text-left">Customer Info</h3>
                     <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-primary/5 shadow-sm">
-                        <div className="size-14 rounded-full bg-primary/10 flex items-center justify-center text-primary text-2xl">{order.customerName?.[0] || '?'}</div>
+                        <div className="size-14 rounded-full bg-primary/10 flex items-center justify-center text-primary text-2xl">
+                            {order.customerName?.[0] || '?'}
+                        </div>
                         <div className="flex-1 text-left">
                             <p className="font-bold">{order.customerName || 'Unknown'}</p>
                             <div className="flex items-center gap-1.5 text-slate-500 text-xs">
@@ -240,7 +196,9 @@ export default function OrderDetail() {
 
                 {/* Order Items */}
                 <section>
-                    <h3 className="text-primary text-sm font-bold uppercase tracking-wider mb-3 text-left">Order Items ({order.items.length})</h3>
+                    <h3 className="text-primary text-sm font-bold uppercase tracking-wider mb-3 text-left">
+                        Order Items ({order.items.length})
+                    </h3>
                     <div className="space-y-3">
                         {order.items.map(item => (
                             <div key={item.id} className="bg-white p-4 rounded-xl border border-primary/5 shadow-sm flex gap-4">
@@ -252,7 +210,7 @@ export default function OrderDetail() {
                                         <p className="font-bold">{item.name || 'Unknown item'}</p>
                                         <span className="text-primary font-bold">x{item.quantity}</span>
                                     </div>
-                                    <p className="text-slate-500 text-sm">Size: {item.size}</p>
+                                    <p className="text-slate-500 text-sm">Size: {item.size || '—'}</p>
                                     {item.customizations && item.customizations.length > 0 && (
                                         <ul className="text-slate-500 text-xs mt-1 space-y-0.5">
                                             {item.customizations.map(c => <li key={c}>• {c}</li>)}
@@ -264,10 +222,33 @@ export default function OrderDetail() {
                     </div>
                 </section>
 
+                {/* Customer notes — plain white card, each line prefixed with item name -WeiqiWang */}
+                {order.notes && (
+                    <section>
+                        <h3 className="text-primary text-sm font-bold uppercase tracking-wider mb-3 text-left">Customer Notes</h3>
+                        <div className="bg-white border border-primary/5 shadow-sm p-4 rounded-xl space-y-2">
+                            {order.notes.split('\n').filter(Boolean).map((line, idx) => {
+                                const colonIdx = line.indexOf(': ');
+                                if (colonIdx !== -1) {
+                                    const itemName = line.slice(0, colonIdx);
+                                    const noteText = line.slice(colonIdx + 2);
+                                    return (
+                                        <div key={idx} className={`text-left ${idx > 0 ? 'pt-2 border-t border-slate-100' : ''}`}>
+                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">{itemName}</p>
+                                            <p className="text-sm text-slate-700 mt-0.5">{noteText}</p>
+                                        </div>
+                                    );
+                                }
+                                return <p key={idx} className="text-sm text-slate-700 text-left">{line}</p>;
+                            })}
+                        </div>
+                    </section>
+                )}
+
                 {/* Allergy alert */}
                 {order.allergies && (
                     <section>
-                        <h3 className="text-primary text-sm font-bold uppercase tracking-wider mb-3 text-left">Staff Notes & Allergies</h3>
+                        <h3 className="text-primary text-sm font-bold uppercase tracking-wider mb-3 text-left">Allergies</h3>
                         <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex gap-3">
                             <AlertTriangle className="text-amber-600 shrink-0" />
                             <div className="text-left">
@@ -314,8 +295,6 @@ export default function OrderDetail() {
                         </button>
                         {showMenu && (
                             <div className="absolute bottom-full right-0 mb-2 bg-white rounded-xl shadow-lg border p-2 w-48 z-50">
-                                {/* Cancel only available for pending and in_progress, NOT ready
-                                    仅 pending 和 in_progress 可取消，ready 不允许 */}
                                 {(order.status === 'pending' || order.status === 'in_progress') && (
                                     <button onClick={() => { setShowCancelModal(true); setShowMenu(false); }}
                                         className="w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg">
@@ -332,58 +311,34 @@ export default function OrderDetail() {
                 </div>
             </div>
 
-            {/* Cancel modal */}
             {showCancelModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
-                        <div className="flex items-center justify-center size-12 bg-red-100 rounded-full mx-auto mb-4">
-                            <X className="size-6 text-red-500" />
-                        </div>
+                        <div className="flex items-center justify-center size-12 bg-red-100 rounded-full mx-auto mb-4"><X className="size-6 text-red-500" /></div>
                         <h3 className="text-lg font-bold text-center mb-1">Cancel this order?</h3>
-                        <p className="text-sm text-slate-500 text-center mb-6">
-                            Order #{order.orderNumber} will be cancelled. You can restore it afterwards if needed.
-                        </p>
+                        <p className="text-sm text-slate-500 text-center mb-6">Order #{order.orderNumber} will be cancelled. You can restore it afterwards if needed.</p>
                         <div className="flex gap-3">
-                            <button onClick={() => setShowCancelModal(false)}
-                                className="flex-1 py-3 border border-slate-200 rounded-xl font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
-                                Keep Order
-                            </button>
-                            <button onClick={handleCancel}
-                                className="flex-1 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors">
-                                Yes, Cancel
-                            </button>
+                            <button onClick={() => setShowCancelModal(false)} className="flex-1 py-3 border border-slate-200 rounded-xl font-semibold text-slate-600 hover:bg-slate-50 transition-colors">Keep Order</button>
+                            <button onClick={handleCancel} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors">Yes, Cancel</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Restore modal */}
             {showRestoreModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
-                        <div className="flex items-center justify-center size-12 bg-blue-100 rounded-full mx-auto mb-4">
-                            <RotateCcw className="size-6 text-blue-600" />
-                        </div>
+                        <div className="flex items-center justify-center size-12 bg-blue-100 rounded-full mx-auto mb-4"><RotateCcw className="size-6 text-blue-600" /></div>
                         <h3 className="text-lg font-bold text-center mb-1">Restore this order?</h3>
-                        <p className="text-sm text-slate-500 text-center mb-6">
-                            Order #{order.orderNumber} will be moved back to{' '}
-                            <span className="font-semibold">{SECTION_LABEL[restoreTarget]}</span>.
-                        </p>
+                        <p className="text-sm text-slate-500 text-center mb-6">Order #{order.orderNumber} will be moved back to <span className="font-semibold">{SECTION_LABEL[restoreTarget]}</span>.</p>
                         <div className="flex gap-3">
-                            <button onClick={() => setShowRestoreModal(false)}
-                                className="flex-1 py-3 border border-slate-200 rounded-xl font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
-                                Keep Cancelled
-                            </button>
-                            <button onClick={handleRestore}
-                                className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors">
-                                Restore
-                            </button>
+                            <button onClick={() => setShowRestoreModal(false)} className="flex-1 py-3 border border-slate-200 rounded-xl font-semibold text-slate-600 hover:bg-slate-50 transition-colors">Keep Cancelled</button>
+                            <button onClick={handleRestore} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors">Restore</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Note modal */}
             {showNoteModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
