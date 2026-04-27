@@ -65,37 +65,43 @@ const css = `
   /* ── Tab nav (Active / History) ── */
   .os-tab-nav {
     display: flex;
+    padding: 8px 10px;
+    gap: 4px;
     border-bottom: 1px solid rgba(44,26,14,0.09);
     background: rgba(250,248,245,0.92);
     backdrop-filter: blur(14px);
   }
   .os-tab-btn {
-    flex: 1; padding: 13px 0;
+    flex: 1; padding: 10px 0;
     font-size: 0.875rem; font-weight: 700;
-    border: none; border-bottom: 2px solid transparent;
+    border: none;
     background: none; cursor: pointer;
     color: #A89A8A;
+    border-radius: 8px;
     transition: all 0.15s;
     letter-spacing: 0.01em;
   }
-  .os-tab-btn.active { border-bottom-color: #2C1A0E; color: #2C1A0E; }
+  .os-tab-btn.active { background: #2C1A0E; color: #fff; }
 
   /* ── History filter tabs ── */
   .os-filter-nav {
     display: flex;
-    border-bottom: 1px solid rgba(44,26,14,0.06);
+    padding: 6px 10px;
+    gap: 4px;
     background: rgba(250,248,245,0.92);
     backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(44,26,14,0.06);
   }
   .os-filter-btn {
-    flex: 1; padding: 10px 0;
+    flex: 1; padding: 8px 0;
     font-size: 0.75rem; font-weight: 700;
-    border: none; border-bottom: 2px solid transparent;
+    border: none;
     background: none; cursor: pointer;
     color: #A89A8A;
+    border-radius: 8px;
     transition: all 0.15s;
   }
-  .os-filter-btn.active { border-bottom-color: #2C1A0E; color: #2C1A0E; }
+  .os-filter-btn.active { background: #2C1A0E; color: #fff; }
 
   /* ── Main scroll area ── */
   .os-main { padding: 16px; padding-bottom: 100px; }
@@ -637,9 +643,20 @@ function formatDateTime(t) {
 /* ─────────────────────────────────────────────
    REORDER SHEET
 ───────────────────────────────────────────── */
+function getDefaultPickupTime() {
+  const d = new Date();
+  d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function ReorderSheet({ order, onClose, onAddToCart, onEditCart, onNavigateTrain }) {
   const [tab, setTab] = useState('time');
+  const [asapMode, setAsapMode] = useState(true);
+  const [pickupTime, setPickupTime] = useState(getDefaultPickupTime());
   const items = order?.items || order?.orderItems || [];
+
+  const resolvedPickupTime = asapMode ? 'ASAP' : pickupTime;
 
   return (
     <>
@@ -654,7 +671,7 @@ function ReorderSheet({ order, onClose, onAddToCart, onEditCart, onNavigateTrain
               <div className="os-sheet-thumb">
                 <img src={item.imageUrl || COFFEE_IMG} alt={item.name || item.itemName} onError={e => e.target.src = COFFEE_IMG} />
               </div>
-              <span className="os-sheet-item-name">{item.size || 'Regular'} {item.name || item.itemName}</span>
+              <span className="os-sheet-item-name">{item.name || item.itemName}</span>
             </div>
             <span className="os-sheet-item-price">
               £{item.subtotal ? Number(item.subtotal).toFixed(2) : item.price ? Number(item.price).toFixed(2) : '—'}
@@ -671,13 +688,43 @@ function ReorderSheet({ order, onClose, onAddToCart, onEditCart, onNavigateTrain
           <button className={`os-pickup-tab ${tab === 'time' ? 'active' : ''}`} onClick={() => setTab('time')}>Set a time</button>
           <button className={`os-pickup-tab ${tab === 'train' ? 'active' : ''}`} onClick={() => { setTab('train'); onClose(); onNavigateTrain && onNavigateTrain(); }}>Link my train</button>
         </div>
-        <button className="os-asap-btn">
-          <span className="os-asap-text">ASAP (in 5–10 mins)</span>
-          <span style={{ color: '#4a3621' }}>▾</span>
-        </button>
 
-        <button className="os-sheet-cta" onClick={onAddToCart}>Add to Cart</button>
-        <button className="os-sheet-edit" onClick={onEditCart || onClose}>Edit before ordering</button>
+        {tab === 'time' && (
+          <div style={{ marginBottom: '16px' }}>
+            {/* ASAP toggle */}
+            <button
+              className="os-asap-btn"
+              onClick={() => setAsapMode(v => !v)}
+              style={{ background: asapMode ? '#4a3621' : 'rgba(74,54,33,0.06)', marginBottom: '10px' }}
+            >
+              <span style={{ fontWeight: 700, color: asapMode ? '#fff' : '#4a3621' }}>ASAP (in 5–10 mins)</span>
+              <span style={{ color: asapMode ? '#fff' : '#4a3621', fontSize: '1rem' }}>{asapMode ? '✓' : '○'}</span>
+            </button>
+
+            {/* Specific time picker */}
+            {!asapMode && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#7A6A5A' }}>Select pickup time</label>
+                <input
+                  type="datetime-local"
+                  value={pickupTime}
+                  min={getDefaultPickupTime()}
+                  onChange={e => setPickupTime(e.target.value)}
+                  style={{
+                    width: '100%', padding: '12px 14px',
+                    border: '1.5px solid rgba(74,54,33,0.2)', borderRadius: '12px',
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontSize: '0.95rem', color: '#1A1008',
+                    background: '#FAF8F5', outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        <button className="os-sheet-cta" onClick={() => onAddToCart(resolvedPickupTime)}>Add to Cart</button>
+        <button className="os-sheet-edit" onClick={() => (onEditCart || onClose)(resolvedPickupTime)}>Edit before ordering</button>
       </div>
     </>
   );
@@ -686,7 +733,7 @@ function ReorderSheet({ order, onClose, onAddToCart, onEditCart, onNavigateTrain
 /* ─────────────────────────────────────────────
    ORDER TRACKING PAGE
 ───────────────────────────────────────────── */
-function TrackingPage({ order, loading, error, onBack, onCancel, cancelling }) {
+function TrackingPage({ order, loading, error, onBack }) {
   if (loading) {
     return (
       <div className="os-tracking-wrap">
@@ -821,18 +868,6 @@ function TrackingPage({ order, loading, error, onBack, onCancel, cancelling }) {
         </div>
       </div>
 
-      {/* Cancel button — for all non-cancelled orders */}
-      {!isCancelled && onCancel && (
-        <div style={{ padding: '0 16px 16px' }}>
-          <button
-            className="os-btn-cancel"
-            disabled={cancelling}
-            onClick={onCancel}
-          >
-            {cancelling ? 'Cancelling…' : 'Cancel Order'}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -861,6 +896,19 @@ export default function OrderStatus() {
   const [activeOrder,  setActiveOrder]  = useState([]);
   const [historyOrders, setHistoryOrders] = useState([]);
   const [hubLoading,   setHubLoading]   = useState(false);
+
+  // Menu item id → name lookup (built from localStorage cache, keys as strings)
+  const [menuLookup, setMenuLookup] = useState(() => {
+    try {
+      const cached = localStorage.getItem('menuItems');
+      if (cached) {
+        const map = {};
+        JSON.parse(cached).forEach(m => { map[String(m.id)] = m.name; });
+        return map;
+      }
+    } catch { /* ignore */ }
+    return {};
+  });
 
   // Ready banner
   const [showReadyBanner, setShowReadyBanner] = useState(false);
@@ -901,6 +949,7 @@ export default function OrderStatus() {
   /* ── Fetch hub orders ── */
   const fetchHubOrders = async () => {
     setHubLoading(true);
+    const isMember = !!localStorage.getItem('member');
     try {
       const ids = JSON.parse(localStorage.getItem('myOrderIds') || '[]');
       let list = [];
@@ -909,13 +958,29 @@ export default function OrderStatus() {
         const orders = await Promise.all(
           ids.map(id => fetch(`${API_BASE}/api/orders/${id}`).then(r => r.ok ? r.json() : null).catch(() => null))
         );
-        // For each order, also fetch its items
+        // Build a menuItems lookup map from cache for resolving item names
+        let localMenuLookup = menuLookup;
+        try {
+          const cached = localStorage.getItem('menuItems');
+          if (cached) {
+            const map = {};
+            JSON.parse(cached).forEach(m => { map[String(m.id)] = m.name; });
+            localMenuLookup = map;
+            setMenuLookup(map);
+          }
+        } catch { /* ignore */ }
+
+        // For each order, also fetch its items and resolve names
         list = await Promise.all(
           orders.filter(Boolean).map(async order => {
             try {
               const itemsRes = await fetch(`${API_BASE}/api/orders/${order.id}/items`);
               const items = itemsRes.ok ? await itemsRes.json() : [];
-              return { ...order, items: Array.isArray(items) ? items : [] };
+              const enriched = (Array.isArray(items) ? items : []).map(item => ({
+                ...item,
+                name: item.name || item.itemName || localMenuLookup[String(item.itemId)] || 'Coffee',
+              }));
+              return { ...order, items: enriched };
             } catch {
               return { ...order, items: [] };
             }
@@ -934,7 +999,8 @@ export default function OrderStatus() {
 
       const active = list.filter(o => !['collected','cancelled'].includes(o.status));
       setActiveOrder(active);
-      setHistoryOrders(list.filter(o => ['collected','cancelled'].includes(o.status)));
+      // Guests see no history — history is only shown to logged-in members
+      setHistoryOrders(isMember ? list.filter(o => ['collected','cancelled'].includes(o.status)) : []);
     } catch {
       /* silent */
     } finally {
@@ -1010,28 +1076,38 @@ export default function OrderStatus() {
   /* ── Reorder ── */
   const buildCartItems = (order) => {
     const items = order?.items || order?.orderItems || [];
-    return items.map(item => ({
-      id: item.itemId || item.id,
-      name: item.name || item.itemName || 'Coffee',
-      size: item.size || 'Regular',
-      price: item.unitPrice
-        || (item.quantity ? (item.subtotal || 0) / item.quantity : 0)
-        || item.price
-        || 0,
-      quantity: item.quantity || 1,
-      customization: {},
-    }));
+    return items.map(item => {
+      const qty = item.quantity || 1;
+      // Priority: subtotal/qty (most accurate) → unitPrice → price → 0
+      let unitPrice = 0;
+      if (item.subtotal && qty) {
+        unitPrice = Number(item.subtotal) / qty;
+      } else if (item.unitPrice) {
+        unitPrice = Number(item.unitPrice);
+      } else if (item.price) {
+        unitPrice = Number(item.price);
+      }
+      return {
+        id: item.itemId || item.id,
+        itemId: item.itemId || item.id,
+        name: item.name || item.itemName || menuLookup[String(item.itemId || item.id)] || 'Coffee',
+        size: item.size || 'Regular',
+        price: Number.isFinite(unitPrice) ? unitPrice : 0,
+        quantity: qty,
+        customization: {},
+      };
+    });
   };
 
-  const handleReorderAddToCart = () => {
+  const handleReorderAddToCart = (pickupTime) => {
     if (!reorderOrder) return;
-    navigate('/', { state: { page: 'cart', cartItems: buildCartItems(reorderOrder) } });
+    navigate('/', { state: { page: 'cart', cartItems: buildCartItems(reorderOrder), reorderPickupTime: pickupTime || 'ASAP' } });
     setReorderOrder(null);
   };
 
-  const handleReorderEditCart = () => {
+  const handleReorderEditCart = (pickupTime) => {
     if (!reorderOrder) return;
-    navigate('/', { state: { page: 'cart', cartItems: buildCartItems(reorderOrder) } });
+    navigate('/', { state: { page: 'cart', cartItems: buildCartItems(reorderOrder), reorderPickupTime: pickupTime || 'ASAP' } });
     setReorderOrder(null);
   };
 
@@ -1058,35 +1134,7 @@ export default function OrderStatus() {
             loading={trackLoad}
             error={trackError}
             onBack={backToHub}
-            onCancel={trackOrder ? () => setConfirmCancelId(trackOrder.id) : null}
-            cancelling={trackOrder ? cancellingId === trackOrder.id : false}
           />
-
-          {/* 底部导航由 App.js CustomerLayout 统一管理 */}
-
-          {/* Cancel confirmation sheet (tracking view) */}
-          {confirmCancelId && (
-            <div className="os-cancel-confirm" onClick={() => setConfirmCancelId(null)}>
-              <div className="os-cancel-confirm-sheet" onClick={e => e.stopPropagation()}>
-                <div className="os-cancel-confirm-title">Cancel this order?</div>
-                <div className="os-cancel-confirm-sub">
-                  Once cancelled, your order cannot be reinstated. You won't be charged if you haven't been already.
-                </div>
-                <button
-                  className="os-cancel-confirm-yes"
-                  onClick={() => cancelOrder(confirmCancelId)}
-                >
-                  Yes, cancel order
-                </button>
-                <button
-                  className="os-cancel-confirm-no"
-                  onClick={() => setConfirmCancelId(null)}
-                >
-                  Keep my order
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </>
     );
@@ -1154,9 +1202,18 @@ export default function OrderStatus() {
                       <StatusBadge status={order.status} />
                       <div className="os-order-id">{order.orderNumber || `Order #${order.id}`}</div>
                     </div>
-                    <div>
+                    <div style={{ textAlign: 'right' }}>
                       <div className="os-pickup-label">Pickup</div>
                       <div className="os-pickup-val">{formatTime(order.pickupTime)}</div>
+                      <div style={{ fontSize: '0.65rem', color: '#dc2626', fontWeight: 600, marginTop: '3px' }}>
+                        Collect by {(() => {
+                          try {
+                            const d = new Date(order.pickupTime);
+                            d.setMinutes(d.getMinutes() + 15);
+                            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                          } catch { return '—'; }
+                        })()}
+                      </div>
                     </div>
                   </div>
                   <div className="os-drink-row">
@@ -1165,20 +1222,13 @@ export default function OrderStatus() {
                       {(() => {
                         const items = order.items || order.orderItems || [];
                         const first = items[0];
-                        const text = first ? `${first.size || 'Regular'} ${first.name || first.itemName || 'Coffee'}` : 'Coffee';
+                        const text = first ? (first.name || first.itemName || menuLookup[String(first.itemId)] || 'Coffee') : 'Coffee';
                         return items.length > 1 ? `${text} (and ${items.length - 1} more)` : text;
                       })()}
                     </span>
                   </div>
                   <button className="os-btn-track" onClick={() => openTracking(order.id)}>
                     Track Order
-                  </button>
-                  <button
-                    className="os-btn-cancel"
-                    disabled={cancellingId === order.id}
-                    onClick={() => setConfirmCancelId(order.id)}
-                  >
-                    {cancellingId === order.id ? 'Cancelling…' : 'Cancel Order'}
                   </button>
                 </div>
               </div>
@@ -1286,29 +1336,6 @@ export default function OrderStatus() {
           />
         )}
 
-        {/* Cancel confirmation sheet */}
-        {confirmCancelId && (
-          <div className="os-cancel-confirm" onClick={() => setConfirmCancelId(null)}>
-            <div className="os-cancel-confirm-sheet" onClick={e => e.stopPropagation()}>
-              <div className="os-cancel-confirm-title">Cancel this order?</div>
-              <div className="os-cancel-confirm-sub">
-                Once cancelled, your order cannot be reinstated. You won't be charged if you haven't been already.
-              </div>
-              <button
-                className="os-cancel-confirm-yes"
-                onClick={() => cancelOrder(confirmCancelId)}
-              >
-                Yes, cancel order
-              </button>
-              <button
-                className="os-cancel-confirm-no"
-                onClick={() => setConfirmCancelId(null)}
-              >
-                Keep my order
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </>
   );
