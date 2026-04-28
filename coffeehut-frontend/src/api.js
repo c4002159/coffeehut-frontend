@@ -91,28 +91,34 @@ function buildArchivedOrder(template) {
     };
 }
 
-// Returns overdue info for card border and overdue badge. -WeiqiWang
-// pending: overdue if not accepted within OVERDUE_THRESHOLDS.pending seconds.
-// in_progress: overdue if current time is past the customer's pickupTime.
+// Returns overdue/urgent info for card border and badges. -WeiqiWang
+// pending:     overdue if not accepted within OVERDUE_THRESHOLDS.pending seconds.
+// in_progress: urgent if ≤5 min to pickupTime; overdue only when past pickupTime.
 export function getOrderOverdueInfo(order) {
     const now = Date.now();
 
     if (order.status === 'pending') {
         const elapsed = (now - new Date(order.createdAt).getTime()) / 1000;
         const overdue = elapsed > OVERDUE_THRESHOLDS.pending;
-        return { overdue, elapsedSeconds: Math.floor(elapsed), reason: overdue ? 'Waiting to be accepted' : null };
+        return { overdue, urgent: false, elapsedSeconds: Math.floor(elapsed), reason: overdue ? 'Waiting to be accepted' : null };
     }
 
     if (order.status === 'in_progress') {
-        // Overdue when past the customer's requested pickup time -WeiqiWang
         if (order.pickupTime) {
-            const overdue = Date.now() > new Date(order.pickupTime).getTime();
-            return { overdue, reason: overdue ? 'Past pickup time' : null };
+            const diff    = new Date(order.pickupTime).getTime() - now; // ms remaining
+            const overdue = diff < 0;
+            // urgent = within 5 minutes but not yet overdue -WeiqiWang
+            const urgent  = !overdue && diff <= 5 * 60 * 1000;
+            return {
+                overdue,
+                urgent,
+                reason: overdue ? 'Past pickup time' : urgent ? 'Pickup time approaching' : null,
+            };
         }
-        return { overdue: false, reason: null };
+        return { overdue: false, urgent: false, reason: null };
     }
 
-    return { overdue: false, elapsedSeconds: 0, reason: null };
+    return { overdue: false, urgent: false, elapsedSeconds: 0, reason: null };
 }
 
 export async function login(email, password) {

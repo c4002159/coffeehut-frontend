@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Clock, Star, MessageSquare, Play, MoreHorizontal, AlertTriangle, Coffee, Check, Utensils, Package, Handshake, X, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Clock, Play, MoreHorizontal, AlertTriangle, Coffee, Check, Utensils, Package, Handshake, X, RotateCcw } from 'lucide-react';
 import { fetchOrderDetail, updateOrderStatus, cancelOrder, addOrderNote, getOrderOverdueInfo, OVERDUE_THRESHOLDS } from '../../api';
 
 function useStepStatusLabel(order) {
@@ -138,7 +138,7 @@ export default function OrderDetail() {
 
             <main className="p-4 space-y-6 pb-32 overflow-y-auto">
 
-                {/* Customer Info */}
+                {/* Customer Info — "Regular" badge and chat icon removed -WeiqiWang */}
                 <section>
                     <h3 className="text-primary text-sm font-bold uppercase tracking-wider mb-3 text-left">Customer Info</h3>
                     <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-primary/5 shadow-sm">
@@ -147,13 +147,7 @@ export default function OrderDetail() {
                         </div>
                         <div className="flex-1 text-left">
                             <p className="font-bold">{order.customerName || 'Unknown'}</p>
-                            <div className="flex items-center gap-1.5 text-slate-500 text-xs">
-                                <Star className="size-3 text-amber-500 fill-amber-500" />Regular
-                            </div>
                         </div>
-                        <button className="bg-primary/10 p-2 rounded-full text-primary" onClick={() => alert('Chat with customer (simulated)')}>
-                            <MessageSquare className="size-5" />
-                        </button>
                     </div>
                 </section>
 
@@ -222,7 +216,7 @@ export default function OrderDetail() {
                     </div>
                 </section>
 
-                {/* Customer notes — plain white card, each line prefixed with item name -WeiqiWang */}
+                {/* Customer notes */}
                 {order.notes && (
                     <section>
                         <h3 className="text-primary text-sm font-bold uppercase tracking-wider mb-3 text-left">Customer Notes</h3>

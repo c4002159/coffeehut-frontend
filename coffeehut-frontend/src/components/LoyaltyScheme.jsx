@@ -90,34 +90,44 @@ export default function LoyaltyScheme() {
   }, []);
 
   const handleLogin = useCallback(
-    (e) => {
+    async (e) => {
       e.preventDefault();
       const em = loginForm.email.trim();
       if (!em) return;
-      const nextMember = {
-        name: em.split('@')[0] || 'Member',
-        email: em,
-        isLoyaltyMember: true,
-        totalOrders: member?.isLoyaltyMember ? member?.totalOrders ?? 0 : 0,
-        freeCups: member?.isLoyaltyMember ? member?.freeCups ?? 0 : 0,
-      };
-      saveMember(nextMember);
-      navigate('/loyalty/profile');
+      try {
+        const res = await fetch('http://localhost:8080/api/loyalty/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: em, password: loginForm.password })
+        });
+        const data = await res.json();
+        if (!res.ok) { alert(data.error || 'Invalid email or password'); return; }
+        const nextMember = { name: data.name || em.split('@')[0], email: em, isLoyaltyMember: true, totalOrders: data.totalOrders ?? 0, freeCups: data.freeCups ?? 0 };
+        saveMember(nextMember);
+        navigate('/loyalty/profile');
+      } catch { alert('Network error, please try again.'); }
     },
-    [loginForm.email, member?.totalOrders, navigate, saveMember]
+    [loginForm.email, loginForm.password, navigate, saveMember]
   );
 
   const handleRegister = useCallback(
-    (e) => {
+    async (e) => {
       e.preventDefault();
       const name = registerForm.name.trim() || 'Member';
       const em = registerForm.email.trim();
-      if (!em) return;
-      const nextMember = { name, email: em, isLoyaltyMember: true, totalOrders: 0, freeCups: 0 };
-      saveMember(nextMember);
-      navigate('/loyalty/profile');
+      if (!em || !registerForm.password) return;
+      try {
+        const res = await fetch('http://localhost:8080/api/loyalty/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email: em, password: registerForm.password })
+        });
+        const data = await res.json();
+        if (!res.ok) { alert(data.error || 'Registration failed'); return; }
+        const nextMember = { name, email: em, isLoyaltyMember: true, totalOrders: 0, freeCups: 0 };
+        saveMember(nextMember);
+        navigate('/loyalty/profile');
+      } catch { alert('Network error, please try again.'); }
     },
-    [navigate, registerForm.email, registerForm.name, saveMember]
+    [navigate, registerForm.email, registerForm.name, registerForm.password, saveMember]
   );
 
   const setAuthTab = (tab) => {

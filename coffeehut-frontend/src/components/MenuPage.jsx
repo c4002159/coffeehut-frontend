@@ -5,16 +5,18 @@ function MenuPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const authPageFromQuery = new URLSearchParams(location.search).get('authPage');
-  const [menuItems, setMenuItems] = useState([]);
+  const [menuItems, setMenuItems] = useState(() => {
+    try { const c = localStorage.getItem('cachedMenu'); return c ? JSON.parse(c) : []; } catch { return []; }
+  });
+  const [storeOpen, setStoreOpen] = useState(true);
+  const [storeHoursLabel, setStoreHoursLabel] = useState('Open Today');
   const [cart, setCart] = useState(() => { if (location.state?.cartItems?.length) return location.state.cartItems; try { const saved = localStorage.getItem('cart'); return saved ? JSON.parse(saved) : []; } catch { return []; } });
-  const [page, setPage] = useState(() => location.state?.page || 'home');
+  const [page, setPageState] = useState(() => location.state?.page || localStorage.getItem('menuPage') || 'home');
   const [customerName, setCustomerName] = useState('');
 
   // Re-sync page/cart when location.state changes (e.g. nav clicks or reorder navigation)
   useEffect(() => {
-    const cached = localStorage.getItem("menuItems");
-    if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
-    if (location.state?.page) setPage(location.state.page);
+    if (location.state?.page) setPageState(location.state.page);
     if (location.state?.cartItems) setCart(location.state.cartItems);
     // Apply pickup time from reorder sheet
     if (location.state?.reorderPickupTime) {
@@ -40,6 +42,7 @@ function MenuPage() {
   }, [authPageFromQuery]);
 
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerNote, setCustomerNote] = useState('');
   const toLocalDateTimeInput = (date) => {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -77,31 +80,65 @@ function MenuPage() {
   const [specialNotes, setSpecialNotes] = useState('');
   const [authPage, setAuthPage] = useState(() => {
     if (authPageFromQuery === 'login' || authPageFromQuery === 'register') return authPageFromQuery;
-    return location.state?.authPage || null;
+    return location.state?.authPage || localStorage.getItem('authPage') || null;
   }); // null | 'login' | 'register'
   const [member, setMember] = useState(() => {
     const saved = localStorage.getItem('member');
     return saved ? JSON.parse(saved) : null;
   });
 
+  const setPage = (nextPage) => {
+    localStorage.setItem('menuPage', nextPage);
+    setPageState(nextPage);
+    navigate('/', { replace: true, state: { ...location.state, page: nextPage } });
+  };
+
   useEffect(() => {
-    const cached = localStorage.getItem("menuItems");
-    if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
-    fetch('http://localhost:8080/api/menu')
-      .then(res => res.json())
-      .then(data => { setMenuItems(data); setLoading(false); localStorage.setItem("menuItems", JSON.stringify(data)); })
-      .catch(() => setLoading(false));
+    const fetchMenu = () => {
+      fetch('http://localhost:8080/api/menu')
+        .then(res => res.json())
+        .then(data => { setMenuItems(data); localStorage.setItem('cachedMenu', JSON.stringify(data)); })
+        .catch(() => {});
+    };
+    fetchMenu();
+    const interval = setInterval(fetchMenu, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    const cached = localStorage.getItem("menuItems");
-    if (cached) { setMenuItems(JSON.parse(cached)); setLoading(false); }
     if (location.state?.suggestedPickupTime) {
       setPickupTime(location.state.suggestedPickupTime);
       setPickupMode('train');
       setPage('cart');
     }
   }, [location.state]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const refreshStoreStatus = () => {
+      fetch('http://localhost:8080/api/store/status')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (!isMounted || !data) return;
+          setStoreOpen(Boolean(data.isOpen));
+          setStoreHoursLabel(data.todayHoursLabel || 'Open Today');
+        })
+        .catch(() => {
+          if (!isMounted) return;
+          setStoreOpen(false);
+          setStoreHoursLabel('Currently unavailable');
+        });
+    };
+
+    refreshStoreStatus();
+    const intervalId = window.setInterval(refreshStoreStatus, 10000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const addToCart = (item, size, customization = {}) => {
     const basePrice = size === 'Regular' ? item.regularPrice : item.largePrice;
@@ -120,26 +157,25 @@ function MenuPage() {
   };
 
   const setQtyDirect = (id, size, val) => {
+    if (val === '' || val === 0) {
+      setCart(cart.map(c => c.id === id && c.size === size ? { ...c, quantity: 0 } : c));
+      return;
+    }
     const n = parseInt(val, 10);
     if (isNaN(n) || n < 1) return;
     const capped = Math.min(n, 999);
     setCart(cart.map(c => c.id === id && c.size === size ? { ...c, quantity: capped } : c));
   };
   useEffect(() => { localStorage.setItem('cart', JSON.stringify(cart)); }, [cart]);
+  useEffect(() => { if (authPage) localStorage.setItem('authPage', authPage); else localStorage.removeItem('authPage'); }, [authPage]);
   const total = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
-  const isOpen = () => { return true; // 24h
-    const now = new Date();
-    const day = now.getDay();
-    const hour = now.getHours() + now.getMinutes() / 60;
-    if (day === 0) return false;
-    if (day >= 1 && day <= 5) return hour >= 6.5 && hour < 19;
-    if (day === 6) return hour >= 7 && hour < 18;
-    return false;
-  };
-
   const goToPayment = () => {
+    if (cart.some(c => !c.quantity || c.quantity < 1)) {
+      alert('Quantity cannot be empty. Please enter a valid quantity for all items.');
+      return;
+    }
     if (!customerName || !pickupTime) {
       alert('Please enter your name and pickup time!');
       return;
@@ -448,16 +484,11 @@ function MenuPage() {
                 <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: C.creamDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>🕐</div>
                 <div>
                   <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: C.textMain }}>
-                    {(() => {
-                      const ukDay = new Date(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' })).getDay();
-                      if (ukDay === 0) return 'Closed Today (Sunday)';
-                      if (ukDay === 6) return 'Open Today 08:00 – 16:00';
-                      return 'Open Today 06:30 – 19:00';
-                    })()}
+                    {storeHoursLabel}
                   </p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '5px' }}>
-                    <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: isOpen() ? '#16a34a' : '#dc2626', boxShadow: isOpen() ? '0 0 0 2px rgba(22,163,74,0.2)' : '0 0 0 2px rgba(220,38,38,0.2)' }}></div>
-                    <p style={{ margin: 0, fontSize: '12px', color: C.textSub, fontWeight: '500' }}>{isOpen() ? 'Open now' : 'Currently closed'}</p>
+                    <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: storeOpen ? '#16a34a' : '#dc2626', boxShadow: storeOpen ? '0 0 0 2px rgba(22,163,74,0.2)' : '0 0 0 2px rgba(220,38,38,0.2)' }}></div>
+                    <p style={{ margin: 0, fontSize: '12px', color: C.textSub, fontWeight: '500' }}>{storeOpen ? 'Open now' : 'Currently closed'}</p>
                   </div>
                 </div>
               </div>
@@ -524,21 +555,9 @@ function MenuPage() {
             <p style={{ margin: '6px 0 0', fontSize: '13px', color: C.textMuted, fontWeight: '500' }}>
               {searchQuery.trim() ? `${filteredMenuItems.length} result${filteredMenuItems.length !== 1 ? 's' : ''} for "${searchQuery}"` : 'Freshly roasted, brewed with care'}
             </p>
+            <div style={{ margin: "12px 0 8px", display: "flex", justifyContent: "center", alignItems: "center", gap: "6px" }}><span style={{ fontSize: "14px" }}>💡</span><p style={{ margin: 0, fontSize: "13px", color: "#A06B5D", fontWeight: "500" }}>Please note: Orders not picked up within 15 minutes of the scheduled time will be cancelled without refund.</p></div>
           </div>
 
-          {loading && (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textMuted }}>
-              <div style={{ fontSize: '32px', marginBottom: '12px' }}>☕</div>
-              <p style={{ margin: 0, fontSize: '14px', fontWeight: '500' }}>Loading menu...</p>
-            </div>
-          )}
-          {!loading && filteredMenuItems.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textMuted }}>
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🔍</div>
-              <p style={{ margin: 0, fontWeight: '700', fontSize: '15px', color: C.textSub }}>No drinks found</p>
-              <p style={{ margin: '6px 0 0', fontSize: '13px' }}>Try "{searchQuery.slice(0, 1).toUpperCase() + searchQuery.slice(1)}" or a different term</p>
-            </div>
-          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '10px', padding: '8px 16px', paddingBottom: '16px' }}>
             {filteredMenuItems.map(item => (
@@ -549,8 +568,8 @@ function MenuPage() {
                     <p style={{ margin: '0 0 12px', fontSize: '12px', color: C.textMuted, fontWeight: '400' }}>Rich and freshly brewed.</p>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
 
-                      <button onClick={() => openCustomize(item)} className="add-btn" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', background: C.espresso, color: 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 2px 6px rgba(44,26,14,0.22)' }}>
-                        + Add
+                      <button onClick={() => item.isAvailable !== false && openCustomize(item)} disabled={item.isAvailable === false} className="add-btn" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', background: item.isAvailable === false ? '#d1c4b8' : C.espresso, color: item.isAvailable === false ? '#9ca3af' : 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '13px', fontWeight: '700', cursor: item.isAvailable === false ? 'not-allowed' : 'pointer', boxShadow: item.isAvailable === false ? 'none' : '0 2px 6px rgba(44,26,14,0.22)', pointerEvents: item.isAvailable === false ? 'none' : 'auto' }}>
+                        {item.isAvailable === false ? 'Unavailable' : '+ Add'}
                       </button>
                     </div>
                   </div>
@@ -612,7 +631,7 @@ function MenuPage() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                   <button onClick={() => updateQty(item.id, item.size, -1)} className="qty-btn" style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: C.creamDark, cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.brown, fontWeight: '700' }}>−</button>
-                  <input type="number" min="1" max="999" value={item.quantity} onChange={e => { const v = e.target.value.replace(/[^0-9]/g,""); setQtyDirect(item.id, item.size, v === "" ? 1 : Math.min(parseInt(v)||1, 999)); }} onClick={e => e.target.select()} onKeyDown={e => { if (["e","E","+","-","."].includes(e.key)) e.preventDefault(); }} style={{ width: "48px", textAlign: "center", fontWeight: "700", fontSize: "15px", color: C.textMain, border: "1.5px solid #e2e8f0", borderRadius: "8px", padding: "4px 0", outline: "none", background: "white" }} />
+                  <input type="number" min="1" max="999" value={item.quantity === 0 ? "" : item.quantity} onChange={e => { const v = e.target.value.replace(/[^0-9]/g,""); setQtyDirect(item.id, item.size, v === "" ? 0 : Math.min(parseInt(v)||0, 999)); }} onBlur={e => { if (!item.quantity || item.quantity < 1) setQtyDirect(item.id, item.size, 1); }} onClick={e => e.target.select()} onKeyDown={e => { if (["e","E","+","-","."].includes(e.key)) e.preventDefault(); }} style={{ width: "48px", textAlign: "center", fontWeight: "700", fontSize: "15px", color: C.textMain, border: "1.5px solid #e2e8f0", borderRadius: "8px", padding: "4px 0", outline: "none", background: "white" }} />
                   <button onClick={() => updateQty(item.id, item.size, 1)} className="qty-btn" style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: C.creamDark, cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.brown, fontWeight: '700' }}>+</button>
                 </div>
               </div>
@@ -693,6 +712,7 @@ function MenuPage() {
               <p style={{ margin: "0 0 10px", fontSize: "13px", fontWeight: "700", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Personal Information</p>
               <input placeholder="Your name *" value={customerName} onChange={e => setCustomerName(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', marginBottom: '10px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white' }} />
               <input placeholder="Phone (optional)" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white' }} />
+              <textarea placeholder="Notes (optional)" value={customerNote} onChange={e => setCustomerNote(e.target.value)} rows={3} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white', resize: 'none', marginTop: '10px' }} />
             </div>
 
             {/* Pickup location */}
@@ -721,8 +741,8 @@ function MenuPage() {
 
           {/* Place order bar */}
           <div style={{ background: 'white', borderTop: `1px solid ${C.border}`, padding: '16px 16px calc(16px + env(safe-area-inset-bottom, 0px))', boxSizing: 'border-box' }}>
-            {!isOpen() && <p style={{ margin: '0 0 8px', color: '#dc2626', fontSize: '12px', textAlign: 'center', fontWeight: '600' }}>⚠️ Store is currently closed</p>}
-            <button onClick={goToPayment} disabled={cart.length === 0 || !isOpen()} className={cart.length > 0 && isOpen() ? 'browse-btn' : ''} style={{ width: '100%', background: cart.length > 0 && isOpen() ? C.espresso : '#d1c4b8', color: 'white', border: 'none', borderRadius: '16px', padding: '17px', fontSize: '15px', fontWeight: '700', cursor: cart.length > 0 && isOpen() ? 'pointer' : 'not-allowed', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: cart.length > 0 && isOpen() ? '0 3px 12px rgba(44,26,14,0.28)' : 'none', letterSpacing: '0.01em' }}>
+            {!storeOpen && <p style={{ margin: '0 0 8px', color: '#dc2626', fontSize: '12px', textAlign: 'center', fontWeight: '600' }}>⚠️ Store is currently closed</p>}
+            <button onClick={goToPayment} disabled={cart.length === 0 || !storeOpen} className={cart.length > 0 && storeOpen ? 'browse-btn' : ''} style={{ width: '100%', background: cart.length > 0 && storeOpen ? C.espresso : '#d1c4b8', color: 'white', border: 'none', borderRadius: '16px', padding: '17px', fontSize: '15px', fontWeight: '700', cursor: cart.length > 0 && storeOpen ? 'pointer' : 'not-allowed', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: cart.length > 0 && storeOpen ? '0 3px 12px rgba(44,26,14,0.28)' : 'none', letterSpacing: '0.01em' }}>
               <span>Place Order</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700' }}>
                 <span>£{(total + 0.5 + total * 0.09).toFixed(2)}</span>
@@ -747,23 +767,21 @@ function LoginPage({ onSuccess, onGoRegister, onBack }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email || !password) { setError('Please fill in all fields'); return; }
-    setError('');
-    // Loyalty login: verify against localStorage (customer accounts are local-only)
+    setError(''); setLoading(true);
     try {
-      const saved = localStorage.getItem('member');
-      if (saved) {
-        const m = JSON.parse(saved);
-        if (m.email === email.trim() && m.password === password) {
-          onSuccess(m);
-          return;
-        }
-      }
-      setError('Invalid email or password');
-    } catch {
-      setError('Something went wrong, please try again.');
-    }
+      const res = await fetch('http://localhost:8080/api/loyalty/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password })
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Invalid email or password'); return; }
+      const member = { name: data.name, email: email.trim(), isLoyaltyMember: true, totalOrders: data.totalOrders ?? 0, freeCups: data.freeCups ?? 0 };
+      localStorage.setItem('member', JSON.stringify(member));
+      onSuccess(member);
+    } catch { setError('Network error, please try again.'); }
+    finally { setLoading(false); }
   };
 
   const inp = { width: '100%', boxSizing: 'border-box', height: '52px', borderRadius: '12px', border: '1.5px solid #e2e8f0', background: 'white', padding: '0 16px', fontSize: '15px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: '#1a1a1a', transition: 'border-color 0.2s' };
