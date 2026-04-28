@@ -40,6 +40,7 @@ function MenuPage() {
   }, [authPageFromQuery]);
 
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerNote, setCustomerNote] = useState('');
   const toLocalDateTimeInput = (date) => {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -717,6 +718,7 @@ function MenuPage() {
               <p style={{ margin: "0 0 10px", fontSize: "13px", fontWeight: "700", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Personal Information</p>
               <input placeholder="Your name *" value={customerName} onChange={e => setCustomerName(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', marginBottom: '10px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white' }} />
               <input placeholder="Phone (optional)" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white' }} />
+              <textarea placeholder="Notes (optional)" value={customerNote} onChange={e => setCustomerNote(e.target.value)} rows={3} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.borderMid}`, borderRadius: '12px', padding: '14px', fontSize: '14px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: C.textMain, background: 'white', resize: 'none', marginTop: '10px' }} />
             </div>
 
             {/* Pickup location */}
