@@ -771,23 +771,21 @@ function LoginPage({ onSuccess, onGoRegister, onBack }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email || !password) { setError('Please fill in all fields'); return; }
-    setError('');
-    // Loyalty login: verify against localStorage (customer accounts are local-only)
+    setError(''); setLoading(true);
     try {
-      const saved = localStorage.getItem('member');
-      if (saved) {
-        const m = JSON.parse(saved);
-        if (m.email === email.trim() && m.password === password) {
-          onSuccess(m);
-          return;
-        }
-      }
-      setError('Invalid email or password');
-    } catch {
-      setError('Something went wrong, please try again.');
-    }
+      const res = await fetch('http://localhost:8080/api/loyalty/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password })
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Invalid email or password'); return; }
+      const member = { name: data.name, email: email.trim(), isLoyaltyMember: true, totalOrders: data.totalOrders ?? 0, freeCups: data.freeCups ?? 0 };
+      localStorage.setItem('member', JSON.stringify(member));
+      onSuccess(member);
+    } catch { setError('Network error, please try again.'); }
+    finally { setLoading(false); }
   };
 
   const inp = { width: '100%', boxSizing: 'border-box', height: '52px', borderRadius: '12px', border: '1.5px solid #e2e8f0', background: 'white', padding: '0 16px', fontSize: '15px', outline: 'none', fontFamily: "'Plus Jakarta Sans', Arial, sans-serif", color: '#1a1a1a', transition: 'border-color 0.2s' };
