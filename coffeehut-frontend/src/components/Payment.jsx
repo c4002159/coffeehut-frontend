@@ -292,27 +292,34 @@ export default function Payment() {
         const rawMember = localStorage.getItem('member');
         const parsedMember = rawMember ? JSON.parse(rawMember) : null;
         if (parsedMember && parsedMember.isLoyaltyMember === true) {
-          const currentTotal = Math.max(0, Number(parsedMember.totalOrders) || 0);
-          const currentFreeCups = Math.max(0, Number(parsedMember.freeCups) || 0);
+          let currentTotal = Math.max(0, Number(parsedMember.totalOrders) || 0);
+          let currentFreeCups = Math.max(0, Number(parsedMember.freeCups) || 0);
 
           let nextTotal = currentTotal;
           let nextFreeCups = currentFreeCups;
 
           if (autoRedeemFreeCup && currentFreeCups > 0) {
-            // Used a free cup — deduct one, don't count this order as a stamp
+            // Used a free cup — deduct one, don't count this order as stamps
             nextFreeCups = currentFreeCups - 1;
-            nextTotal = currentTotal; // stamps unchanged
+            nextTotal = currentTotal;
           } else {
-            // Normal paid order — add one stamp
-            const newTotal = currentTotal + 1;
-            if (newTotal >= 9) {
-              // Earned a free cup! Reset stamps to 0
-              nextTotal = 0;
-              nextFreeCups = currentFreeCups + 1;
-            } else {
-              nextTotal = newTotal;
-              nextFreeCups = currentFreeCups;
+            // Count total quantity of items purchased (not number of order lines)
+            const itemsCount = (cart.items || []).reduce(
+              (sum, it) => sum + Math.max(1, Number(it.quantity) || 1),
+              0
+            );
+            // Add stamps one by one, awarding a free cup each time we hit 9
+            let running = currentTotal;
+            let cups = currentFreeCups;
+            for (let i = 0; i < itemsCount; i++) {
+              running += 1;
+              if (running >= 9) {
+                cups += 1;
+                running = 0;
+              }
             }
+            nextTotal = running;
+            nextFreeCups = cups;
           }
 
           localStorage.setItem(
@@ -332,6 +339,7 @@ export default function Payment() {
         if (!saved.includes(Number(oid))) saved.push(Number(oid));
         localStorage.setItem('myOrderIds', JSON.stringify(saved));
       }
+      localStorage.removeItem('cart');
       navigate('/order-status', {
         state: { orderId: oid != null ? String(oid) : idForRequest },
       });

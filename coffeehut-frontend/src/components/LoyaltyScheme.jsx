@@ -420,17 +420,24 @@ export default function LoyaltyScheme() {
                 <h2 className="loyalty-section-heading">Payment methods</h2>
                 <button
                   type="button"
-                  className="loyalty-row loyalty-row-chevron"
+                  className="loyalty-row loyalty-row-chevron loyalty-pay-desktop"
                   onClick={() => window.alert('Payment management would open here.')}
                 >
                   Visa Card •••• 4242
                 </button>
                 <button
                   type="button"
-                  className="loyalty-row loyalty-row-chevron"
+                  className="loyalty-row loyalty-row-chevron loyalty-pay-desktop"
                   onClick={() => window.alert('Payment management would open here.')}
                 >
                   Apple Pay
+                </button>
+                <button
+                  type="button"
+                  className="loyalty-row loyalty-row-chevron loyalty-pay-mobile"
+                  onClick={() => window.alert('Payment management would open here.')}
+                >
+                  Horsepay
                 </button>
               </section>
             </div>

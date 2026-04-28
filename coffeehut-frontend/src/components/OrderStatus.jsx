@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
    CONFIG
 ───────────────────────────────────────────── */
 const API_BASE      = 'http://localhost:8080';
-const POLL_INTERVAL = 15000;
+const POLL_INTERVAL = 5000;
 const KIOSK_NAME    = 'Whistlestop Coffee Hut';
 const MAPS_URL      = 'https://maps.google.com/?q=Whistlestop+Coffee+Hut+Newcastle';
 
@@ -306,8 +306,8 @@ const css = `
     padding-bottom: 100px;
   }
   .os-ref-bar {
-    padding: 20px 16px 16px;
-    display: flex; justify-content: space-between; align-items: flex-end;
+    padding: 8px 16px 16px;
+    display: flex; justify-content: space-between; align-items: flex-start;
     background: #FAF8F5;
   }
   .os-ref-label {
@@ -775,6 +775,14 @@ function TrackingPage({ order, loading, error, onBack }) {
   };
   const banner = getStatusBanner();
 
+  const collectBy = (() => {
+    try {
+      const d = new Date(order.pickupTime);
+      d.setMinutes(d.getMinutes() + 15);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch { return null; }
+  })();
+
   return (
     <div className="os-tracking-wrap">
       <div className="os-header">
@@ -789,9 +797,17 @@ function TrackingPage({ order, loading, error, onBack }) {
           <div className="os-ref-label">Reference</div>
           <div className="os-ref-id">{order.orderNumber || `#${order.id}`}</div>
         </div>
-        <div>
-          <div className="os-est-label">Est. Pickup</div>
-          <div className="os-est-time">{formatTime(order.pickupTime) || '—'}</div>
+        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div>
+            <div className="os-est-label">Est. Pickup</div>
+            <div className="os-est-time">{formatTime(order.pickupTime) || '—'}</div>
+          </div>
+          {collectBy && (
+            <div>
+              <div className="os-est-label">Collect by</div>
+              <div className="os-est-time" style={{ color: '#dc2626' }}>{collectBy}</div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1184,9 +1200,7 @@ export default function OrderStatus() {
             <>
           {/* Ongoing Order */}
           <div className="os-section-title">Ongoing Order</div>
-          {hubLoading ? (
-            <div className="os-spinner-wrap"><div className="os-spinner" /><span>Loading orders…</span></div>
-          ) : (activeOrder && activeOrder.length > 0) ? (
+          {(activeOrder && activeOrder.length > 0) ? (
             // ─── 修改处：使用 map 循环渲染 ───
             activeOrder.map(order => (
               <div key={order.id} className="os-active-card" style={{ marginBottom: '16px' }}>
@@ -1216,16 +1230,18 @@ export default function OrderStatus() {
                       </div>
                     </div>
                   </div>
-                  <div className="os-drink-row">
-                    <span className="os-coffee-icon">☕</span>
-                    <span>
-                      {(() => {
-                        const items = order.items || order.orderItems || [];
-                        const first = items[0];
-                        const text = first ? (first.name || first.itemName || menuLookup[String(first.itemId)] || 'Coffee') : 'Coffee';
-                        return items.length > 1 ? `${text} (and ${items.length - 1} more)` : text;
-                      })()}
-                    </span>
+                  <div className="os-drink-row" style={{ alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {(order.items || order.orderItems || []).map((item, i) => {
+                        const name = item.name || item.itemName || menuLookup[String(item.itemId)] || 'Coffee';
+                        const qty = item.quantity > 1 ? ` × ${item.quantity}` : '';
+                        return (
+                          <span key={i} style={{ fontSize: '0.82rem', color: '#4a3621', fontWeight: 600, lineHeight: 1.4 }}>
+                            {name}{qty}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                   <button className="os-btn-track" onClick={() => openTracking(order.id)}>
                     Track Order
@@ -1268,6 +1284,17 @@ export default function OrderStatus() {
                         </div>
                         <StatusBadge status={order.status} />
                       </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '8px' }}>
+                        {(order.items || order.orderItems || []).map((item, i) => {
+                          const name = item.name || item.itemName || menuLookup[String(item.itemId)] || 'Coffee';
+                          const qty = item.quantity > 1 ? ` × ${item.quantity}` : '';
+                          return (
+                            <span key={i} style={{ fontSize: '0.8rem', color: '#4a3621', fontWeight: 600, lineHeight: 1.4 }}>
+                              {name}{qty}
+                            </span>
+                          );
+                        })}
+                      </div>
                       <div className="os-hist-card-bottom">
                         <div className="os-thumb-group">
                           {(order.items || order.orderItems || []).slice(0, 3).map((item, i) => (
@@ -1304,6 +1331,17 @@ export default function OrderStatus() {
                           </div>
                         </div>
                         <StatusBadge status={order.status} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '8px' }}>
+                        {(order.items || order.orderItems || []).map((item, i) => {
+                          const name = item.name || item.itemName || menuLookup[String(item.itemId)] || 'Coffee';
+                          const qty = item.quantity > 1 ? ` × ${item.quantity}` : '';
+                          return (
+                            <span key={i} style={{ fontSize: '0.8rem', color: '#4a3621', fontWeight: 600, lineHeight: 1.4 }}>
+                              {name}{qty}
+                            </span>
+                          );
+                        })}
                       </div>
                       <div className="os-hist-card-bottom">
                         <div className="os-thumb-group">

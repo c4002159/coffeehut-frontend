@@ -895,6 +895,20 @@
   text-decoration: underline;
 }
 
+/* Payment method responsive visibility */
+.loyalty-pay-mobile {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .loyalty-pay-desktop {
+    display: none;
+  }
+  .loyalty-pay-mobile {
+    display: flex;
+  }
+}
+
 .loyalty-guest {
   text-align: center;
   padding: 2rem 1rem;
