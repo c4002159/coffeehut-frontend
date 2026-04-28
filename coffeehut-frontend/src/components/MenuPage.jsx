@@ -5,7 +5,9 @@ function MenuPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const authPageFromQuery = new URLSearchParams(location.search).get('authPage');
-  const [menuItems, setMenuItems] = useState([]);
+  const [menuItems, setMenuItems] = useState(() => {
+    try { const c = localStorage.getItem('cachedMenu'); return c ? JSON.parse(c) : []; } catch { return []; }
+  });
   const [storeOpen, setStoreOpen] = useState(true);
   const [storeHoursLabel, setStoreHoursLabel] = useState('Open Today');
   const [cart, setCart] = useState(() => { if (location.state?.cartItems?.length) return location.state.cartItems; try { const saved = localStorage.getItem('cart'); return saved ? JSON.parse(saved) : []; } catch { return []; } });
@@ -92,11 +94,15 @@ function MenuPage() {
   };
 
   useEffect(() => {
-    setLoading(true);
-    fetch('http://localhost:8080/api/menu')
-      .then(res => res.json())
-      .then(data => { setMenuItems(data); setLoading(false); })
-      .catch(() => setLoading(false));
+    const fetchMenu = () => {
+      fetch('http://localhost:8080/api/menu')
+        .then(res => res.json())
+        .then(data => { setMenuItems(data); localStorage.setItem('cachedMenu', JSON.stringify(data)); })
+        .catch(() => {});
+    };
+    fetchMenu();
+    const interval = setInterval(fetchMenu, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -551,19 +557,7 @@ function MenuPage() {
             </p>
             <div style={{ margin: "12px 0 8px", display: "flex", justifyContent: "center", alignItems: "center", gap: "6px" }}><span style={{ fontSize: "14px" }}>💡</span><p style={{ margin: 0, fontSize: "13px", color: "#A06B5D", fontWeight: "500" }}>Please note: Orders not picked up within 15 minutes of the scheduled time will be cancelled without refund.</p></div>
           </div>
-          {loading && (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textMuted }}>
-              <div style={{ fontSize: '32px', marginBottom: '12px' }}>☕</div>
-              <p style={{ margin: 0, fontSize: '14px', fontWeight: '500' }}>Loading menu...</p>
-            </div>
-          )}
-          {!loading && filteredMenuItems.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textMuted }}>
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🔍</div>
-              <p style={{ margin: 0, fontWeight: '700', fontSize: '15px', color: C.textSub }}>No drinks found</p>
-              <p style={{ margin: '6px 0 0', fontSize: '13px' }}>Try "{searchQuery.slice(0, 1).toUpperCase() + searchQuery.slice(1)}" or a different term</p>
-            </div>
-          )}
+
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '10px', padding: '8px 16px', paddingBottom: '16px' }}>
             {filteredMenuItems.map(item => (
@@ -574,8 +568,8 @@ function MenuPage() {
                     <p style={{ margin: '0 0 12px', fontSize: '12px', color: C.textMuted, fontWeight: '400' }}>Rich and freshly brewed.</p>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
 
-                      <button onClick={() => openCustomize(item)} className="add-btn" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', background: C.espresso, color: 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 2px 6px rgba(44,26,14,0.22)' }}>
-                        + Add
+                      <button onClick={() => item.isAvailable !== false && openCustomize(item)} disabled={item.isAvailable === false} className="add-btn" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', background: item.isAvailable === false ? '#d1c4b8' : C.espresso, color: item.isAvailable === false ? '#9ca3af' : 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '13px', fontWeight: '700', cursor: item.isAvailable === false ? 'not-allowed' : 'pointer', boxShadow: item.isAvailable === false ? 'none' : '0 2px 6px rgba(44,26,14,0.22)', pointerEvents: item.isAvailable === false ? 'none' : 'auto' }}>
+                        {item.isAvailable === false ? 'Unavailable' : '+ Add'}
                       </button>
                     </div>
                   </div>
