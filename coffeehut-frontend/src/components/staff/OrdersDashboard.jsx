@@ -8,9 +8,10 @@ import { fetchActiveOrders, updateOrderStatus, getOrderOverdueInfo } from '../..
 const globalReadIds = new Set();
 
 // Returns the label/value shown in the top-right corner of each card. -WeiqiWang
-// in_progress: counts down to pickupTime; once past, shows how long overdue (min 1m, no + prefix).
+// in_progress: counts down to pickupTime.
+// ≤5 min remaining → Urgent (orange); past pickupTime → Overdue (red). -WeiqiWang
 function getCardTimeInfo(order, now) {
-    const { overdue } = getOrderOverdueInfo(order);
+    const { overdue, urgent } = getOrderOverdueInfo(order);
 
     if (order.status === 'pending') {
         const t = order.createdAt
@@ -23,19 +24,19 @@ function getCardTimeInfo(order, now) {
         if (order.pickupTime) {
             const diff = new Date(order.pickupTime).getTime() - now;
             if (diff <= 0) {
-                // Past pickup time — show how long overdue, minimum 1m, no + prefix -WeiqiWang
+                // Past pickup time — overdue -WeiqiWang
                 const overMins = Math.max(1, Math.ceil(-diff / 60000));
                 const display  = overMins < 60
                     ? `${overMins}m late`
                     : `${Math.floor(overMins / 60)}h ${overMins % 60}m late`;
                 return { label: 'Pickup at', value: display, color: 'text-red-500' };
             }
-            // Still before pickup — countdown -WeiqiWang
             const totalMins = Math.ceil(diff / 60000);
             const hrs   = Math.floor(totalMins / 60);
             const mins  = totalMins % 60;
             const display = hrs > 0 ? `${hrs}h ${mins}m left` : `${mins}m left`;
-            const color   = totalMins <= 5 ? 'text-red-500' : 'text-orange-600';
+            // ≤5 min → urgent (amber), otherwise normal -WeiqiWang
+            const color = totalMins <= 5 ? 'text-amber-500' : 'text-orange-600';
             return { label: 'Pickup at', value: display, color };
         }
         return { label: 'Preparing', value: '—', color: 'text-orange-600' };
@@ -67,9 +68,15 @@ function getCardTimeInfo(order, now) {
     return { label: '', value: 'N/A', color: 'text-slate-400' };
 }
 
+// Formats item list as "Latte × 2, Cold Brew × 1" -WeiqiWang
+function formatItems(items) {
+    if (!items || items.length === 0) return '—';
+    return items
+        .map(i => `${i.name || 'Unknown'} × ${i.quantity || 1}`)
+        .join(', ');
+}
+
 // ordersCacheRef — ref passed from App.js to survive remounts. -WeiqiWang
-// On first render after navigating back, the cached orders are shown immediately
-// while the fresh fetch runs in the background.
 export default function OrdersDashboard({
     autoCancel      = { enabled: true, mins: 15 },
     autoCollect     = { enabled: true, mins: 15 },
@@ -92,7 +99,6 @@ export default function OrdersDashboard({
         try {
             const data = await fetchActiveOrders();
             setOrders(data);
-            // Update the cache so next remount shows fresh data instantly -WeiqiWang
             if (ordersCacheRef) ordersCacheRef.current = data;
             const currentIds    = new Set(data.map(o => o.id));
             const newlyAppeared = [...currentIds].filter(id => !knownIdsRef.current.has(id));
@@ -104,8 +110,6 @@ export default function OrdersDashboard({
         } catch (err) { console.error('Failed to load orders:', err); }
     }, [ordersCacheRef]);
 
-    // loadAllOrders reuses active orders already in state to avoid an extra fetch. -WeiqiWang
-    // Only fetches archived orders (which changes infrequently).
     const loadAllOrders = useCallback(async (currentOrders) => {
         try {
             const { fetchArchivedOrders } = await import('../../api');
@@ -120,7 +124,7 @@ export default function OrdersDashboard({
         } catch (err) { console.error('Failed to load archived orders:', err); }
     }, []);
 
-    // Poll every 10 s (down from 30 s) for faster new-order appearance. -WeiqiWang
+    // Poll every 3 s for near-instant new order appearance. -WeiqiWang
     useEffect(() => {
         let isMounted = true;
         const init = async () => {
@@ -147,7 +151,7 @@ export default function OrdersDashboard({
                     knownIdsRef.current = currentIds;
                 })
                 .catch(err => console.error('Poll failed:', err));
-        }, 10000);
+        }, 3000); // changed from 10000 to 3000 -WeiqiWang
         return () => { isMounted = false; clearInterval(interval); };
     }, [loadAllOrders, ordersCacheRef]);
 
@@ -195,18 +199,15 @@ export default function OrdersDashboard({
     void tick; void readVersion;
     const now = Date.now();
 
-    // Status update: only refresh active orders; refresh allOrders only when needed. -WeiqiWang
     const updateStatus = async (id, newStatus) => {
         try {
             await updateOrderStatus(id, newStatus);
             const fresh = await fetchActiveOrders();
             setOrders(fresh);
             if (ordersCacheRef) ordersCacheRef.current = fresh;
-            // Refresh archived list only when an order is archived -WeiqiWang
             if (newStatus === 'collected' || newStatus === 'cancelled') {
                 loadAllOrders(fresh);
             } else {
-                // Just update allOrders with fresh active orders in-place -WeiqiWang
                 setAllOrders(prev => {
                     const freshIds = new Set(fresh.map(o => o.id));
                     const archived = prev.filter(o => !freshIds.has(o.id) && o.completedAt);
@@ -246,8 +247,9 @@ export default function OrdersDashboard({
         { title: 'Ready',      status: 'ready',       color: 'emerald', buttonText: 'Mark Collected', nextStatus: 'collected' },
     ];
 
-    const borderColor = (status, overdue) => {
+    const borderColor = (status, overdue, urgent) => {
         if (overdue)                  return 'border-red-500';
+        if (urgent)                   return 'border-amber-400';
         if (status === 'pending')     return 'border-blue-500';
         if (status === 'in_progress') return 'border-orange-500';
         if (status === 'ready')       return 'border-emerald-500';
@@ -270,20 +272,23 @@ export default function OrdersDashboard({
         );
     };
 
-    const renderCardHeader = (order, overdue, reason, isCancelled, isCollected) => (
+    const renderCardHeader = (order, overdue, urgent, reason, isCancelled, isCollected) => (
         <div className="flex justify-between items-start mb-2">
             <div className="text-left flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">#{order.orderNumber || '---'}</span>
                     {overdue     && <span className="text-xs font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded">Overdue</span>}
+                    {urgent && !overdue && <span className="text-xs font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Urgent</span>}
                     {isCancelled && <span className="text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">Cancelled</span>}
                     {isCollected && <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Collected</span>}
                 </div>
                 <h4 className="font-bold text-slate-900 truncate">{order.customerName || 'Unknown customer'}</h4>
+                {/* Items shown as "Name × qty" format -WeiqiWang */}
                 <p className="text-xs text-slate-500 mt-0.5 truncate">
-                    {order.items?.map(i => i.name || 'Unknown').join(', ') || '—'}
+                    {formatItems(order.items)}
                 </p>
                 {overdue && reason && <p className="text-xs text-red-400 mt-0.5">{reason}</p>}
+                {urgent && !overdue && <p className="text-xs text-amber-500 mt-0.5">Pickup time approaching</p>}
             </div>
             {renderTimeArea(order)}
         </div>
@@ -293,17 +298,17 @@ export default function OrdersDashboard({
         const isCancelled = order.status === 'cancelled';
         const isCollected = order.status === 'collected';
         const isActive    = ['pending', 'in_progress', 'ready'].includes(order.status);
-        const { overdue, reason } = getOrderOverdueInfo(order);
+        const { overdue, urgent, reason } = getOrderOverdueInfo(order);
         const sectionMap = {
             pending:     { buttonText: 'Accept Order',   nextStatus: 'in_progress', btnClass: overdue ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700' },
-            in_progress: { buttonText: 'Mark Ready',     nextStatus: 'ready',       btnClass: overdue ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-600 hover:bg-orange-700' },
+            in_progress: { buttonText: 'Mark Ready',     nextStatus: 'ready',       btnClass: overdue ? 'bg-red-600 hover:bg-red-700' : urgent ? 'bg-amber-500 hover:bg-amber-600' : 'bg-orange-600 hover:bg-orange-700' },
             ready:       { buttonText: 'Mark Collected', nextStatus: 'collected',   btnClass: 'bg-emerald-600 hover:bg-emerald-700' },
         };
         const section = sectionMap[order.status];
         return (
             <div key={order.id} onClick={() => handleCardClick(order.id)}
-                className={`bg-white rounded-xl p-4 shadow-sm border-l-4 cursor-pointer active:scale-[0.98] transition-transform ${borderColor(order.status, overdue)}`}>
-                {renderCardHeader(order, overdue, reason, isCancelled, isCollected)}
+                className={`bg-white rounded-xl p-4 shadow-sm border-l-4 cursor-pointer active:scale-[0.98] transition-transform ${borderColor(order.status, overdue, urgent)}`}>
+                {renderCardHeader(order, overdue, urgent, reason, isCancelled, isCollected)}
                 {order.status === 'in_progress' && (
                     <div className="w-full bg-slate-100 h-1.5 rounded-full mb-4 overflow-hidden">
                         <div className="bg-orange-500 h-full w-2/3" />
@@ -328,7 +333,7 @@ export default function OrdersDashboard({
         return (
             <div key={order.id} onClick={() => handleCardClick(order.id)}
                 className={`bg-white rounded-xl p-4 shadow-sm border-l-4 cursor-pointer active:scale-[0.98] transition-transform ${isCollected ? 'border-emerald-400' : 'border-slate-300'}`}>
-                {renderCardHeader(order, false, null, !isCollected, isCollected)}
+                {renderCardHeader(order, false, false, null, !isCollected, isCollected)}
                 <div className="flex items-center gap-2">
                     <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">{order.items?.length || 0} Items</span>
                     {order.isPrepaid && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded">Prepaid</span>}
@@ -431,11 +436,11 @@ export default function OrdersDashboard({
                         </div>
                         <div className="space-y-3">
                             {getFilteredOrders(section.status).map(order => {
-                                const { overdue, reason } = getOrderOverdueInfo(order);
+                                const { overdue, urgent, reason } = getOrderOverdueInfo(order);
                                 return (
                                     <div key={order.id} onClick={() => handleCardClick(order.id)}
-                                        className={`bg-white rounded-xl p-4 shadow-sm border-l-4 cursor-pointer active:scale-[0.98] transition-transform ${overdue ? 'border-red-500' : section.color === 'blue' ? 'border-blue-500' : section.color === 'orange' ? 'border-orange-500' : 'border-emerald-500'}`}>
-                                        {renderCardHeader(order, overdue, reason, false, false)}
+                                        className={`bg-white rounded-xl p-4 shadow-sm border-l-4 cursor-pointer active:scale-[0.98] transition-transform ${borderColor(order.status, overdue, urgent)}`}>
+                                        {renderCardHeader(order, overdue, urgent, reason, false, false)}
                                         {order.status === 'in_progress' && (
                                             <div className="w-full bg-slate-100 h-1.5 rounded-full mb-4 overflow-hidden">
                                                 <div className="bg-orange-500 h-full w-2/3" />
@@ -446,7 +451,7 @@ export default function OrdersDashboard({
                                             {order.isPrepaid && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded">Prepaid</span>}
                                         </div>
                                         <button onClick={(e) => { e.stopPropagation(); updateStatus(order.id, section.nextStatus); }}
-                                            className={`w-full text-white font-bold py-2.5 rounded-lg text-sm transition-colors ${overdue ? 'bg-red-600 hover:bg-red-700' : section.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' : section.color === 'orange' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                                            className={`w-full text-white font-bold py-2.5 rounded-lg text-sm transition-colors ${overdue ? 'bg-red-600 hover:bg-red-700' : urgent && section.status === 'in_progress' ? 'bg-amber-500 hover:bg-amber-600' : section.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' : section.color === 'orange' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
                                             {section.buttonText}
                                         </button>
                                     </div>

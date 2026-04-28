@@ -1,9 +1,14 @@
 // OrderArchive.jsx — Order Archive Page -WeiqiWang
+// Module-level cache so data survives navigation back from OrderDetail
+// without showing a loading flash. -WeiqiWang
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, History, ChevronRight, X, XCircle } from 'lucide-react';
 import { fetchArchivedOrders, searchArchivedOrders } from '../../api';
+
+// Module-level cache — persists across remounts within the same session. -WeiqiWang
+let _cachedGroups = null;
 
 function formatCompletedAt(timeStr, status) {
     if (!timeStr) return 'Unknown time';
@@ -15,36 +20,52 @@ function formatCompletedAt(timeStr, status) {
     return status === 'cancelled' ? `Cancelled ${formatted}` : `Collected ${formatted}`;
 }
 
+const EMPTY_GROUPS = { TODAY: [], YESTERDAY: [], LAST_7_DAYS: [] };
+
 export default function OrderArchive() {
-    const [groups, setGroups] = useState({ TODAY: [], YESTERDAY: [], LAST_7_DAYS: [] });
-    const [keyword, setKeyword] = useState('');
-    const [loading, setLoading] = useState(false);
+    // Initialise from cache immediately — no loading flash on back-navigation. -WeiqiWang
+    const [groups,     setGroups]     = useState(() => _cachedGroups || EMPTY_GROUPS);
+    const [keyword,    setKeyword]    = useState('');
+    const [loading,    setLoading]    = useState(!_cachedGroups); // only show loading on first visit
     const [showSearch, setShowSearch] = useState(false);
     const navigate = useNavigate();
 
-    const loadArchived = async (search) => {
-        setLoading(true);
+    const loadArchived = async (search, silent = false) => {
+        if (!silent) setLoading(true);
         try {
             if (search && search.trim()) {
-                const data = await searchArchivedOrders(search);
+                const data   = await searchArchivedOrders(search);
                 const sorted = [...data].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
                 setGroups({ TODAY: sorted, YESTERDAY: [], LAST_7_DAYS: [] });
+                // Don't cache search results -WeiqiWang
             } else {
                 const data = await fetchArchivedOrders();
-                setGroups({
+                const next = {
                     TODAY:       [...(data.TODAY       || [])].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)),
                     YESTERDAY:   [...(data.YESTERDAY   || [])].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)),
                     LAST_7_DAYS: [...(data.LAST_7_DAYS || [])].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)),
-                });
+                };
+                _cachedGroups = next; // update module-level cache -WeiqiWang
+                setGroups(next);
             }
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
     };
 
-    useEffect(() => { loadArchived(); }, []);
+    // On mount: if we already have cached data show it instantly,
+    // then silently refresh in the background. -WeiqiWang
+    useEffect(() => {
+        if (_cachedGroups) {
+            loadArchived(undefined, true); // silent background refresh
+        } else {
+            loadArchived();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         if (keyword === '') loadArchived();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [keyword]);
 
     const handleToggleSearch = () => {
@@ -71,7 +92,6 @@ export default function OrderArchive() {
                 </button>
             </header>
 
-            {/* Search input — Chinese placeholder removed -WeiqiWang */}
             {showSearch && (
                 <div className="px-4 pt-3 pb-2">
                     <input autoFocus type="text"
@@ -84,6 +104,7 @@ export default function OrderArchive() {
             )}
 
             <main className="flex-1 pb-24 overflow-y-auto">
+                {/* Show spinner only on first load, not on background refresh -WeiqiWang */}
                 {loading && <div className="text-center py-8">Loading...</div>}
 
                 {!loading && Object.entries(groups).map(([key, orders]) => orders.length > 0 && (

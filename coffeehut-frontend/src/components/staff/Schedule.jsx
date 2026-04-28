@@ -1,5 +1,6 @@
 // Schedule.jsx — Manage Schedule Page -WeiqiWang
 // Weekly hours and holiday exceptions are now persisted to DB. -WeiqiWang
+// Time inputs use 24-hour format (HH:mm) to avoid AM/PM ambiguity. -WeiqiWang
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -13,46 +14,58 @@ const STORE_STATUS_READ  = 'http://localhost:8080/api/store/status';
 
 const SCHEDULE_IMAGE = "https://lh3.googleusercontent.com/aida-public/AB6AXuCpUOIXm1RvanJ87MDTH8SVcB_BzcwgVGH6NBpVgVYs7iTV6T_kM88KQTVziOZpbAdzqjYCWlkSZG47nr9olPZwwqwa5nIuAlVq-RwxQIfHoWvEgfLTtnEaa4POFd0ZughfD4pe3hc_u-l0sZ-Achn2NJsi4TjHDmhGFuqKXC75Tu-y09WyUdWJjzXtq6HrHmDrXu-heArLGV4OT6GaIQAO-cE30AhAj8aZPmfl-hSXJSlITcbCMVGiwLEyw0crNcjHgSTNj_EapzY";
 
-const MINUTES = ['00','05','10','15','20','25','30','35','40','45','50','55'];
-const HOURS   = ['1','2','3','4','5','6','7','8','9','10','11','12'];
+const MINUTES_24 = ['00','05','10','15','20','25','30','35','40','45','50','55'];
+const HOURS_24   = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')); // 00-23
 
-function parseTime(str) {
-    if (!str || str === 'Closed All Day') return { hour: '9', minute: '00', period: 'AM' };
-    const m = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-    if (!m) return { hour: '9', minute: '00', period: 'AM' };
-    return { hour: String(parseInt(m[1], 10)), minute: m[2], period: m[3].toUpperCase() };
-}
-function formatTime(h, m, p) { return `${h}:${m} ${p}`; }
-function timeToMinutes(str) {
-    const { hour, minute, period } = parseTime(str);
-    let h = parseInt(hour, 10), mn = parseInt(minute, 10);
-    if (period === 'AM' && h === 12) h = 0;
-    if (period === 'PM' && h !== 12) h += 12;
-    return h * 60 + mn;
+// Parse "HH:mm" (24-hr). Falls back gracefully for legacy "h:mm AM/PM" values
+// already stored in DB so existing data still displays correctly. -WeiqiWang
+function parseTime24(str) {
+    if (!str || str === 'Closed All Day') return { hour: '09', minute: '00' };
+    // Try 24-hr first
+    const m24 = str.match(/^(\d{2}):(\d{2})$/);
+    if (m24) return { hour: m24[1], minute: m24[2] };
+    // Legacy 12-hr fallback (e.g. "9:00 AM" already in DB) -WeiqiWang
+    const m12 = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (m12) {
+        let h = parseInt(m12[1], 10);
+        const period = m12[3].toUpperCase();
+        if (period === 'AM' && h === 12) h = 0;
+        if (period === 'PM' && h !== 12) h += 12;
+        return { hour: String(h).padStart(2, '0'), minute: m12[2] };
+    }
+    return { hour: '09', minute: '00' };
 }
 
+function formatTime24(h, m) { return `${h}:${m}`; }
+
+// Convert "HH:mm" to total minutes for comparison -WeiqiWang
+function timeToMinutes24(str) {
+    const { hour, minute } = parseTime24(str);
+    return parseInt(hour, 10) * 60 + parseInt(minute, 10);
+}
+
+// Display helper — show as "09:00" -WeiqiWang
+function displayTime(str) {
+    if (!str) return '—';
+    const { hour, minute } = parseTime24(str);
+    return `${hour}:${minute}`;
+}
+
+// 24-hour time picker — no AM/PM -WeiqiWang
 function TimePicker({ value, onChange }) {
-    const { hour, minute, period } = parseTime(value);
-    const update = (h, m, p) => onChange(formatTime(h, m, p));
+    const { hour, minute } = parseTime24(value);
+    const update = (h, m) => onChange(formatTime24(h, m));
     return (
         <div className="flex gap-2 items-center">
-            <select value={hour} onChange={e => update(e.target.value, minute, period)}
+            <select value={hour} onChange={e => update(e.target.value, minute)}
                 className="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white">
-                {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
+                {HOURS_24.map(h => <option key={h} value={h}>{h}</option>)}
             </select>
             <span className="text-slate-400 font-bold">:</span>
-            <select value={minute} onChange={e => update(hour, e.target.value, period)}
+            <select value={minute} onChange={e => update(hour, e.target.value)}
                 className="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white">
-                {MINUTES.map(m => <option key={m} value={m}>{m}</option>)}
+                {MINUTES_24.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
-            <div className="flex border border-slate-200 rounded-lg overflow-hidden">
-                {['AM','PM'].map(p => (
-                    <button key={p} type="button" onClick={() => update(hour, minute, p)}
-                        className={`px-3 py-2.5 text-sm font-semibold transition-colors ${period === p ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
-                        {p}
-                    </button>
-                ))}
-            </div>
         </div>
     );
 }
@@ -66,17 +79,22 @@ function formatDateRange(startDate, endDate) {
     return `${s} – ${e}`;
 }
 
+// Check if two date ranges overlap -WeiqiWang
+function rangesOverlap(s1, e1, s2, e2) {
+    return s1 <= e2 && e1 >= s2;
+}
+
 // Default rows used while loading / if backend has no data yet -WeiqiWang
 const DEFAULT_HOURS = [
-    { id: 1, dayLabel: 'Monday - Friday', openTime: '9:00 AM',  closeTime: '6:00 PM', isClosed: false },
-    { id: 2, dayLabel: 'Saturday',         openTime: '10:00 AM', closeTime: '4:00 PM', isClosed: false },
-    { id: 3, dayLabel: 'Sunday',           openTime: null,       closeTime: null,       isClosed: true  },
+    { id: 1, dayLabel: 'Monday - Friday', openTime: '09:00', closeTime: '18:00', isClosed: false },
+    { id: 2, dayLabel: 'Saturday',         openTime: '10:00', closeTime: '16:00', isClosed: false },
+    { id: 3, dayLabel: 'Sunday',           openTime: null,    closeTime: null,    isClosed: true  },
 ];
 
 export default function Schedule() {
     const navigate = useNavigate();
 
-    // ── Live status ───────────────────────────────────────────────────────
+    // ── Live Status ───────────────────────────────────────────────────────
     const [isOpen,        setIsOpen]        = useState(true);
     const [statusLoading, setStatusLoading] = useState(false);
 
@@ -111,7 +129,6 @@ export default function Schedule() {
             .finally(() => setHoursLoading(false));
     }, []);
 
-    // Save all 3 rows to DB after editing -WeiqiWang
     const persistHours = async (rows) => {
         try {
             await fetch(HOURS_API, {
@@ -135,22 +152,22 @@ export default function Schedule() {
 
     // ── Edit weekly hours modal ───────────────────────────────────────────
     const [editingIndex,  setEditingIndex]  = useState(null);
-    const [editOpen,      setEditOpen]      = useState('9:00 AM');
-    const [editClose,     setEditClose]     = useState('6:00 PM');
+    const [editOpen,      setEditOpen]      = useState('09:00');
+    const [editClose,     setEditClose]     = useState('18:00');
     const [editIsClosed,  setEditIsClosed]  = useState(false);
     const [editTimeError, setEditTimeError] = useState('');
 
     const handleOpenEdit = (index) => {
         const h = openingHours[index];
         setEditingIndex(index);
-        setEditOpen(h.isClosed || h.openTime === null ? '9:00 AM' : h.openTime);
-        setEditClose(h.isClosed || h.closeTime === null ? '6:00 PM' : h.closeTime);
+        setEditOpen(h.isClosed || h.openTime === null ? '09:00' : h.openTime);
+        setEditClose(h.isClosed || h.closeTime === null ? '18:00' : h.closeTime);
         setEditIsClosed(!!h.isClosed);
         setEditTimeError('');
     };
 
     const handleSaveEdit = async () => {
-        if (!editIsClosed && timeToMinutes(editClose) <= timeToMinutes(editOpen)) {
+        if (!editIsClosed && timeToMinutes24(editClose) <= timeToMinutes24(editOpen)) {
             setEditTimeError('Closing time must be later than opening time.'); return;
         }
         const updated = openingHours.map((h, i) => i !== editingIndex ? h : {
@@ -171,18 +188,28 @@ export default function Schedule() {
     const [holidayEndDate,   setHolidayEndDate]   = useState('');
     const [holidayName,      setHolidayName]      = useState('');
     const [holidayIsClosed,  setHolidayIsClosed]  = useState(true);
-    const [holidayOpen,      setHolidayOpen]      = useState('9:00 AM');
-    const [holidayClose,     setHolidayClose]     = useState('5:00 PM');
+    const [holidayOpen,      setHolidayOpen]      = useState('09:00');
+    const [holidayClose,     setHolidayClose]     = useState('17:00');
     const [holidayTimeError, setHolidayTimeError] = useState('');
 
     const handleSaveHoliday = async () => {
         if (!holidayStartDate || !holidayName) { alert('Please fill in date and name'); return; }
-        if (holidays.some(h => h.startDate === holidayStartDate)) { alert('A holiday exception already exists for this start date.'); return; }
-        if (!holidayIsClosed && timeToMinutes(holidayClose) <= timeToMinutes(holidayOpen)) { setHolidayTimeError('Closing time must be later than opening time.'); return; }
+        const effectiveEnd = holidayEndDate || holidayStartDate;
+
+        // Check for overlapping date ranges with existing holidays -WeiqiWang
+        const overlap = holidays.some(h => {
+            if (!h.startDate || !h.endDate) return false;
+            return rangesOverlap(holidayStartDate, effectiveEnd, h.startDate, h.endDate);
+        });
+        if (overlap) { alert('A holiday exception already exists for this date range. Please choose different dates.'); return; }
+
+        if (!holidayIsClosed && timeToMinutes24(holidayClose) <= timeToMinutes24(holidayOpen)) {
+            setHolidayTimeError('Closing time must be later than opening time.'); return;
+        }
         const body = {
             name: holidayName,
             startDate: holidayStartDate,
-            endDate: holidayEndDate || holidayStartDate,
+            endDate: effectiveEnd,
             isClosed: holidayIsClosed,
             openTime:  holidayIsClosed ? null : holidayOpen,
             closeTime: holidayIsClosed ? null : holidayClose,
@@ -193,7 +220,7 @@ export default function Schedule() {
             setHolidays(prev => [...prev, saved]);
         } catch (e) { console.error('Failed to save holiday:', e); }
         setHolidayStartDate(''); setHolidayEndDate(''); setHolidayName('');
-        setHolidayIsClosed(true); setHolidayOpen('9:00 AM'); setHolidayClose('5:00 PM');
+        setHolidayIsClosed(true); setHolidayOpen('09:00'); setHolidayClose('17:00');
         setHolidayTimeError('');
         setShowHolidayModal(false);
     };
@@ -201,21 +228,22 @@ export default function Schedule() {
     // ── Edit holiday modal ────────────────────────────────────────────────
     const [editingHoliday,       setEditingHoliday]       = useState(null);
     const [editHolidayIsClosed,  setEditHolidayIsClosed]  = useState(true);
-    const [editHolidayOpen,      setEditHolidayOpen]      = useState('9:00 AM');
-    const [editHolidayClose,     setEditHolidayClose]     = useState('5:00 PM');
+    const [editHolidayOpen,      setEditHolidayOpen]      = useState('09:00');
+    const [editHolidayClose,     setEditHolidayClose]     = useState('17:00');
     const [editHolidayTimeError, setEditHolidayTimeError] = useState('');
 
     const handleOpenEditHoliday = (h) => {
         setEditingHoliday(h);
         setEditHolidayIsClosed(!!h.isClosed);
-        setEditHolidayOpen(h.openTime   || '9:00 AM');
-        setEditHolidayClose(h.closeTime || '5:00 PM');
+        setEditHolidayOpen(h.openTime   || '09:00');
+        setEditHolidayClose(h.closeTime || '17:00');
         setEditHolidayTimeError('');
     };
 
     const handleSaveEditHoliday = async () => {
-        if (!editHolidayIsClosed && timeToMinutes(editHolidayClose) <= timeToMinutes(editHolidayOpen)) { setEditHolidayTimeError('Closing time must be later than opening time.'); return; }
-        // Delete old + re-insert as update (simplest approach for small data) -WeiqiWang
+        if (!editHolidayIsClosed && timeToMinutes24(editHolidayClose) <= timeToMinutes24(editHolidayOpen)) {
+            setEditHolidayTimeError('Closing time must be later than opening time.'); return;
+        }
         try {
             await fetch(`${HOLIDAYS_API}/${editingHoliday.id}`, { method: 'DELETE' });
             const body = { ...editingHoliday, isClosed: editHolidayIsClosed, openTime: editHolidayIsClosed ? null : editHolidayOpen, closeTime: editHolidayIsClosed ? null : editHolidayClose };
@@ -300,7 +328,7 @@ export default function Schedule() {
                                         <div>
                                             <p className="font-semibold">{hour.dayLabel}</p>
                                             <p className={`text-sm ${hour.isClosed ? 'text-slate-500 italic' : 'text-slate-500'}`}>
-                                                {hour.isClosed ? 'Closed All Day' : `${hour.openTime} – ${hour.closeTime}`}
+                                                {hour.isClosed ? 'Closed All Day' : `${displayTime(hour.openTime)} – ${displayTime(hour.closeTime)}`}
                                             </p>
                                         </div>
                                     </div>
@@ -348,7 +376,7 @@ export default function Schedule() {
                                         <div className="flex-1">
                                             <p className="font-semibold">{h.name}</p>
                                             <p className="text-sm text-slate-500">
-                                                {formatDateRange(h.startDate, h.endDate)} · {h.isClosed ? 'Closed' : `${h.openTime} – ${h.closeTime}`}
+                                                {formatDateRange(h.startDate, h.endDate)} · {h.isClosed ? 'Closed' : `${displayTime(h.openTime)} – ${displayTime(h.closeTime)}`}
                                             </p>
                                         </div>
                                     </div>
@@ -374,8 +402,8 @@ export default function Schedule() {
                         </label>
                         {!editIsClosed && (
                             <div className="space-y-4">
-                                <div><label className="block text-sm font-medium text-slate-600 mb-2">Open</label><TimePicker value={editOpen} onChange={v => { setEditOpen(v); setEditTimeError(''); }} /></div>
-                                <div><label className="block text-sm font-medium text-slate-600 mb-2">Close</label><TimePicker value={editClose} onChange={v => { setEditClose(v); setEditTimeError(''); }} /></div>
+                                <div><label className="block text-sm font-medium text-slate-600 mb-2">Open (24h)</label><TimePicker value={editOpen} onChange={v => { setEditOpen(v); setEditTimeError(''); }} /></div>
+                                <div><label className="block text-sm font-medium text-slate-600 mb-2">Close (24h)</label><TimePicker value={editClose} onChange={v => { setEditClose(v); setEditTimeError(''); }} /></div>
                                 {editTimeError && <p className="text-sm text-red-500 font-medium">{editTimeError}</p>}
                             </div>
                         )}
@@ -401,8 +429,8 @@ export default function Schedule() {
                             <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={holidayIsClosed} onChange={e => { setHolidayIsClosed(e.target.checked); setHolidayTimeError(''); }} className="rounded text-primary border-slate-300" /><span className="text-sm font-medium">Closed All Day</span></label>
                             {!holidayIsClosed && (
                                 <div className="space-y-4">
-                                    <div><label className="block text-sm font-medium text-slate-600 mb-2">Open</label><TimePicker value={holidayOpen} onChange={v => { setHolidayOpen(v); setHolidayTimeError(''); }} /></div>
-                                    <div><label className="block text-sm font-medium text-slate-600 mb-2">Close</label><TimePicker value={holidayClose} onChange={v => { setHolidayClose(v); setHolidayTimeError(''); }} /></div>
+                                    <div><label className="block text-sm font-medium text-slate-600 mb-2">Open (24h)</label><TimePicker value={holidayOpen} onChange={v => { setHolidayOpen(v); setHolidayTimeError(''); }} /></div>
+                                    <div><label className="block text-sm font-medium text-slate-600 mb-2">Close (24h)</label><TimePicker value={holidayClose} onChange={v => { setHolidayClose(v); setHolidayTimeError(''); }} /></div>
                                     {holidayTimeError && <p className="text-sm text-red-500 font-medium">{holidayTimeError}</p>}
                                 </div>
                             )}
@@ -424,8 +452,8 @@ export default function Schedule() {
                         <label className="flex items-center gap-2 mb-5 cursor-pointer"><input type="checkbox" checked={editHolidayIsClosed} onChange={e => { setEditHolidayIsClosed(e.target.checked); setEditHolidayTimeError(''); }} className="rounded text-primary border-slate-300" /><span className="text-sm font-medium">Closed All Day</span></label>
                         {!editHolidayIsClosed && (
                             <div className="space-y-4">
-                                <div><label className="block text-sm font-medium text-slate-600 mb-2">Open</label><TimePicker value={editHolidayOpen} onChange={v => { setEditHolidayOpen(v); setEditHolidayTimeError(''); }} /></div>
-                                <div><label className="block text-sm font-medium text-slate-600 mb-2">Close</label><TimePicker value={editHolidayClose} onChange={v => { setEditHolidayClose(v); setEditHolidayTimeError(''); }} /></div>
+                                <div><label className="block text-sm font-medium text-slate-600 mb-2">Open (24h)</label><TimePicker value={editHolidayOpen} onChange={v => { setEditHolidayOpen(v); setEditHolidayTimeError(''); }} /></div>
+                                <div><label className="block text-sm font-medium text-slate-600 mb-2">Close (24h)</label><TimePicker value={editHolidayClose} onChange={v => { setEditHolidayClose(v); setEditHolidayTimeError(''); }} /></div>
                                 {editHolidayTimeError && <p className="text-sm text-red-500 font-medium">{editHolidayTimeError}</p>}
                             </div>
                         )}
